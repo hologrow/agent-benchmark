@@ -4,7 +4,7 @@ Benchmark 评估器脚本
 用于评估 benchmark run 的结果
 
 用法:
-    python run_evaluator.py <run_id>
+    uv run python run_evaluator.py <run_id>
 """
 
 import subprocess
@@ -20,6 +20,12 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # 数据库路径
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'benchmark.db')
+
+
+def log(msg: str):
+    """打印带时间戳的日志"""
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print(f"[{timestamp}] {msg}", flush=True)
 
 
 def get_db_connection():
@@ -38,69 +44,128 @@ def parse_template(template: str, context: Dict) -> str:
     return result
 
 
-def evaluate_with_llm(prompt: str, model: str = "claude-sonnet-4-6") -> Dict:
-    """使用 LLM 进行评估"""
+def evaluate_with_llm(prompt: str, model_config: Dict) -> Dict:
+    """使用 LLM 进行评估
+
+    Args:
+        prompt: 评估提示词
+        model_config: 模型配置，包含 model_id, provider, api_key, base_url, config 等
+    """
+    provider = model_config.get('provider', 'openai')
+    model_id = model_config.get('model_id')
+    api_key = model_config.get('api_key')
+    base_url = model_config.get('base_url')
+    config = model_config.get('config', {})
+
+    log(f"[调试] 开始调用 LLM")
+    log(f"[调试] Provider: {provider}")
+    log(f"[调试] Model ID: {model_id}")
+    log(f"[调试] Base URL: {base_url}")
+    log(f"[调试] API Key: {'已配置' if api_key else '未配置'}")
+    log(f"[调试] Prompt 长度: {len(prompt)} 字符")
+
+    if not api_key:
+        return {
+            'success': False,
+            'error': '未配置 API Key，请在模型配置中设置 API Key'
+        }
+
+    if not model_id:
+        return {
+            'success': False,
+            'error': '未配置 Model ID'
+        }
+
     try:
-        # 使用 acpx 调用 LLM 进行评估
-        cmd = [
-            "acpx",
-            "--approve-all",
-            "--format", "json",
-            "--model", model,
-            "general",
-            "exec",
-            prompt
-        ]
-
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-
-        if result.returncode != 0:
+        if provider == 'openai' or provider == 'openrouter':
+            return evaluate_with_openai(prompt, model_id, api_key, base_url, config)
+        else:
             return {
                 'success': False,
-                'error': f"LLM 调用失败: {result.stderr}"
+                'error': f'不支持的 provider: {provider}'
+            }
+    except Exception as e:
+        log(f"[错误] 评估异常: {str(e)}")
+        import traceback
+        log(f"[错误] 堆栈: {traceback.format_exc()}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def evaluate_with_openai(prompt: str, model_id: str, api_key: str, base_url: Optional[str], config: Dict) -> Dict:
+    """使用 OpenAI 兼容接口进行评估"""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return {
+            'success': False,
+            'error': '未安装 openai 包，请运行: pip install openai'
+        }
+
+    # 构建客户端配置
+    client_config = {
+        'api_key': api_key
+    }
+    if base_url:
+        client_config['base_url'] = base_url
+
+    log(f"[调试] OpenAI 客户端配置: {client_config}")
+
+    client = OpenAI(**client_config)
+
+    # 获取配置参数
+    temperature = config.get('temperature', 0.7)
+    max_tokens = config.get('max_tokens', 4096)
+
+    try:
+        log(f"[调试] 发送请求到 OpenAI API...")
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {"role": "system", "content": "你是一个专业的 AI Agent 评估专家。请根据给定的测试用例和评估标准，对 Agent 的输出进行客观、公正的评估。"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format={"type": "json_object"}  # 要求返回 JSON 格式
+        )
+
+        log(f"[调试] API 响应成功")
+        content = response.choices[0].message.content
+        log(f"[调试] 响应内容长度: {len(content) if content else 0} 字符")
+
+        if not content:
+            return {
+                'success': False,
+                'error': 'API 返回空内容'
             }
 
-        # 尝试从输出中提取 JSON
-        output = result.stdout
-        # 查找 JSON 块
-        json_match = re.search(r'```json\s*(.*?)\s*```', output, re.DOTALL)
-        if json_match:
-            json_str = json_match.group(1)
-        else:
-            json_str = output
-
         try:
-            evaluation = json.loads(json_str)
+            evaluation = json.loads(content)
             return {
                 'success': True,
                 'evaluation': evaluation
             }
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            log(f"[警告] 无法解析 JSON 响应，将返回原始内容: {str(e)}")
             # 如果无法解析 JSON，将整个输出作为报告
             return {
                 'success': True,
                 'evaluation': {
                     'score': 0,
-                    'report': output,
+                    'report': content,
                     'key_points_met': [],
                     'forbidden_points_violated': []
                 }
             }
 
-    except subprocess.TimeoutExpired:
-        return {
-            'success': False,
-            'error': 'LLM 评估超时'
-        }
     except Exception as e:
+        log(f"[错误] OpenAI API 调用失败: {str(e)}")
         return {
             'success': False,
-            'error': str(e)
+            'error': f'OpenAI API 调用失败: {str(e)}'
         }
 
 
@@ -108,6 +173,7 @@ def evaluate_single_result(args: Dict) -> Dict:
     """评估单个结果（用于多进程）"""
     result_id = args['result_id']
     evaluator_config = args['evaluator_config']
+    model_config = args.get('model_config', {})
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -187,16 +253,22 @@ def evaluate_single_result(args: Dict) -> Dict:
     evaluation_prompt = parse_template(evaluation_prompt_template, context)
 
     # 执行评估
-    model = evaluator_config.get('model', 'claude-sonnet-4-6')
-    print(f"评估结果 {result_id}，使用模型: {model}...")
-    eval_result = evaluate_with_llm(evaluation_prompt, model)
+    log(f"评估结果 {result_id}，使用模型: {model_config.get('model_id', 'unknown')}...")
+    eval_result = evaluate_with_llm(evaluation_prompt, model_config)
 
     if not eval_result['success']:
-        print(f"评估失败: {eval_result.get('error')}")
+        error_msg = eval_result.get('error', 'Unknown error')
+        log(f"评估失败: {error_msg}")
+        # 保存评估错误到 benchmark_results 表
+        cursor.execute(
+            'UPDATE benchmark_results SET evaluation_error = ? WHERE id = ?',
+            (error_msg, result_id)
+        )
+        conn.commit()
         return {
             'result_id': result_id,
             'status': 'failed',
-            'error': eval_result.get('error')
+            'error': error_msg
         }
 
     evaluation = eval_result['evaluation']
@@ -204,10 +276,10 @@ def evaluate_single_result(args: Dict) -> Dict:
     # 保存评估结果
     cursor.execute(
         '''INSERT INTO evaluations
-           (run_id, result_id, score, report, key_points_met, forbidden_points_violated, evaluated_at)
+           (execution_id, result_id, score, report, key_points_met, forbidden_points_violated, evaluated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)''',
         (
-            result['run_id'],
+            result['execution_id'],
             result_id,
             evaluation.get('score'),
             evaluation.get('report'),
@@ -225,103 +297,196 @@ def evaluate_single_result(args: Dict) -> Dict:
     }
 
 
-def run_evaluation(run_id: int):
+def run_evaluation(execution_id: int):
     """执行评估"""
-    print(f"开始评估 Benchmark Run {run_id}")
+    log(f"开始评估 Benchmark Execution {execution_id}")
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # 获取 run 详情
-    cursor.execute('SELECT * FROM benchmark_runs WHERE id = ?', (run_id,))
-    run = cursor.fetchone()
+    # 更新 evaluation_status 为 running
+    cursor.execute(
+        "UPDATE benchmark_executions SET evaluation_status = 'running' WHERE id = ?",
+        (execution_id,)
+    )
+    conn.commit()
 
-    if not run:
-        print(f"错误: 未找到 benchmark run {run_id}")
-        sys.exit(1)
+    try:
+        # 获取 execution 详情
+        cursor.execute('''
+            SELECT be.*, b.evaluator_id
+            FROM benchmark_executions be
+            JOIN benchmarks b ON be.benchmark_id = b.id
+            WHERE be.id = ?
+        ''', (execution_id,))
+        execution = cursor.fetchone()
 
-    if not run['evaluator_id']:
-        print("该 run 没有配置评估器，跳过评估")
-        return
+        if not execution:
+            log(f"错误: 未找到 benchmark execution {execution_id}")
+            cursor.execute(
+                "UPDATE benchmark_executions SET evaluation_status = 'failed' WHERE id = ?",
+                (execution_id,)
+            )
+            conn.commit()
+            sys.exit(1)
 
-    # 获取评估器配置
-    cursor.execute('SELECT * FROM evaluators WHERE id = ?', (run['evaluator_id'],))
-    evaluator = cursor.fetchone()
+        if not execution['evaluator_id']:
+            log("该 execution 没有配置评估器，跳过评估")
+            cursor.execute(
+                "UPDATE benchmark_executions SET evaluation_status = 'completed' WHERE id = ?",
+                (execution_id,)
+            )
+            conn.commit()
+            return
 
-    if not evaluator:
-        print(f"错误: 未找到评估器 {run['evaluator_id']}")
-        sys.exit(1)
+        # 获取评估器配置
+        cursor.execute('SELECT * FROM evaluators WHERE id = ?', (execution['evaluator_id'],))
+        evaluator = cursor.fetchone()
 
-    evaluator_config = json.loads(evaluator['config'])
-    print(f"使用评估器: {evaluator['name']}")
+        if not evaluator:
+            log(f"错误: 未找到评估器 {execution['evaluator_id']}")
+            cursor.execute(
+                "UPDATE benchmark_executions SET evaluation_status = 'failed' WHERE id = ?",
+                (execution_id,)
+            )
+            conn.commit()
+            sys.exit(1)
 
-    # 获取所有需要评估的结果
-    cursor.execute('''
-        SELECT br.id FROM benchmark_results br
-        WHERE br.run_id = ? AND br.status = 'completed'
-        AND NOT EXISTS (
-            SELECT 1 FROM evaluations e WHERE e.result_id = br.id
-        )
-    ''', (run_id,))
+        evaluator_config = json.loads(evaluator['config'])
+        log(f"使用评估器: {evaluator['name']}")
+        log(f"[调试] 评估器配置: {evaluator_config}")
 
-    results_to_evaluate = [row['id'] for row in cursor.fetchall()]
+        # 获取模型配置
+        model_config = {}
+        model_id = evaluator.get('model_id') if hasattr(evaluator, 'get') else evaluator['model_id']
+        log(f"[调试] 评估器 model_id: {model_id}")
 
-    if not results_to_evaluate:
-        print("没有需要评估的结果")
-        return
+        if model_id:
+            cursor.execute('SELECT * FROM models WHERE id = ?', (model_id,))
+            model_row = cursor.fetchone()
+            log(f"[调试] 查询模型结果: {model_row is not None}")
+            if model_row:
+                model_config = {
+                    'id': model_row['id'],
+                    'name': model_row['name'],
+                    'model_id': model_row['model_id'],
+                    'provider': model_row['provider'],
+                    'api_key': model_row['api_key'],
+                    'base_url': model_row['base_url'],
+                    'config': json.loads(model_row['config']) if model_row['config'] else {}
+                }
+                log(f"使用配置的模型: {model_config['name']} (ID: {model_config['model_id']}, Provider: {model_config['provider']})")
+            else:
+                log(f"[警告] 未找到 model_id={model_id} 的模型")
+        else:
+            log("[警告] 评估器未配置模型")
 
-    print(f"需要评估的结果数: {len(results_to_evaluate)}")
+        # 如果没有配置模型，报错
+        if not model_config:
+            error_msg = "评估器未配置模型，请先配置模型"
+            log(f"[错误] {error_msg}")
+            cursor.execute(
+                "UPDATE benchmark_executions SET evaluation_status = 'failed' WHERE id = ?",
+                (execution_id,)
+            )
+            conn.commit()
+            return
 
-    # 准备评估任务
-    eval_tasks = [
-        {
-            'result_id': result_id,
-            'evaluator_config': evaluator_config
-        }
-        for result_id in results_to_evaluate
-    ]
+        # 获取所有需要评估的结果
+        cursor.execute('''
+            SELECT br.id FROM benchmark_results br
+            WHERE br.execution_id = ? AND br.status = 'completed'
+            AND NOT EXISTS (
+                SELECT 1 FROM evaluations e WHERE e.result_id = br.id
+            )
+        ''', (execution_id,))
 
-    # 获取并行度配置
-    max_workers = evaluator_config.get('max_workers', 1)
+        results_to_evaluate = [row['id'] for row in cursor.fetchall()]
 
-    # 执行评估
-    completed_count = 0
-    failed_count = 0
+        if not results_to_evaluate:
+            log("没有需要评估的结果")
+            cursor.execute(
+                "UPDATE benchmark_executions SET evaluation_status = 'completed' WHERE id = ?",
+                (execution_id,)
+            )
+            conn.commit()
+            return
 
-    if max_workers > 1:
-        # 并行执行
-        with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(evaluate_single_result, task): task for task in eval_tasks}
-            for future in as_completed(futures):
-                result = future.result()
+        log(f"需要评估的结果数: {len(results_to_evaluate)}")
+
+        # 准备评估任务
+        eval_tasks = [
+            {
+                'result_id': result_id,
+                'evaluator_config': evaluator_config,
+                'model_config': model_config
+            }
+            for result_id in results_to_evaluate
+        ]
+
+        # 获取并行度配置
+        max_workers = evaluator_config.get('max_workers', 1)
+
+        # 执行评估
+        completed_count = 0
+        failed_count = 0
+
+        if max_workers > 1:
+            # 并行执行
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                futures = {executor.submit(evaluate_single_result, task): task for task in eval_tasks}
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result.get('status') == 'completed':
+                        completed_count += 1
+                    else:
+                        failed_count += 1
+                    log(f"评估进度: {completed_count + failed_count}/{len(eval_tasks)}")
+        else:
+            # 串行执行
+            for task in eval_tasks:
+                result = evaluate_single_result(task)
                 if result.get('status') == 'completed':
                     completed_count += 1
                 else:
                     failed_count += 1
-                print(f"评估进度: {completed_count + failed_count}/{len(eval_tasks)}")
-    else:
-        # 串行执行
-        for task in eval_tasks:
-            result = evaluate_single_result(task)
-            if result.get('status') == 'completed':
-                completed_count += 1
-            else:
-                failed_count += 1
-            print(f"评估进度: {completed_count + failed_count}/{len(eval_tasks)}")
+                log(f"评估进度: {completed_count + failed_count}/{len(eval_tasks)}")
 
-    print(f"\n评估完成!")
-    print(f"总计: {len(eval_tasks)}, 成功: {completed_count}, 失败: {failed_count}")
+        # Update evaluation_status based on results
+        if failed_count > 0:
+            final_status = 'failed'
+        else:
+            final_status = 'completed'
+
+        cursor.execute(
+            "UPDATE benchmark_executions SET evaluation_status = ? WHERE id = ?",
+            (final_status, execution_id)
+        )
+        conn.commit()
+
+        log("评估完成!")
+        log(f"总计: {len(eval_tasks)}, 成功: {completed_count}, 失败: {failed_count}")
+        log(f"评估状态: {final_status}")
+
+    except Exception as e:
+        log(f"评估过程发生错误: {e}")
+        cursor.execute(
+            "UPDATE benchmark_executions SET evaluation_status = 'failed' WHERE id = ?",
+            (execution_id,)
+        )
+        conn.commit()
+        raise
 
 
 def main():
     if len(sys.argv) < 2:
-        print(__doc__)
-        print("\n用法:")
-        print("    python run_evaluator.py <run_id>")
+        log(__doc__)
+        log("\n用法:")
+        log("    uv run python run_evaluator.py <execution_id>")
         sys.exit(1)
 
-    run_id = int(sys.argv[1])
-    run_evaluation(run_id)
+    execution_id = int(sys.argv[1])
+    run_evaluation(execution_id)
 
 
 if __name__ == "__main__":

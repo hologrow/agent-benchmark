@@ -354,7 +354,7 @@ def run_benchmark(execution_id: int):
         if execution.get('evaluator_id'):
             print(f"\n开始评估...")
             evaluator_script = Path(__file__).parent / 'run_evaluator.py'
-            subprocess.run([sys.executable, str(evaluator_script), str(execution_id)])
+            subprocess.run(['uv', 'run', 'python3', str(evaluator_script), str(execution_id)])
 
     except Exception as e:
         print(f"执行出错: {e}")

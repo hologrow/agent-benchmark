@@ -19,6 +19,7 @@ import {
   AlertCircle,
   RotateCcw,
   Trash2,
+  Play,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -40,6 +41,7 @@ interface BenchmarkResult {
   output_file: string | null;
   execution_time_ms: number | null;
   error_message: string | null;
+  evaluation_error: string | null;
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
@@ -65,6 +67,7 @@ interface Execution {
   completed_at: string | null;
   created_at: string;
   benchmark_name: string;
+  evaluation_status: "pending" | "running" | "completed" | "failed" | null;
   results: BenchmarkResult[];
 }
 
@@ -81,6 +84,7 @@ export default function ExecutionDetailsPage() {
     null,
   );
   const [resultDialogOpen, setResultDialogOpen] = useState(false);
+  const [reevaluating, setReevaluating] = useState(false);
 
   useEffect(() => {
     fetchExecution();
@@ -150,6 +154,31 @@ export default function ExecutionDetailsPage() {
     setResultDialogOpen(true);
   };
 
+  const handleReevaluate = async () => {
+    if (!execution) return;
+
+    setReevaluating(true);
+    try {
+      const response = await fetch(`/api/executions/${execution.id}/evaluate`, {
+        method: "POST",
+      });
+
+      if (response.ok) {
+        toast.success("评估任务已启动");
+        // Refresh execution data to show new evaluation status
+        fetchExecution();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "启动评估失败");
+      }
+    } catch (error) {
+      console.error("Error starting evaluation:", error);
+      toast.error("启动评估失败");
+    } finally {
+      setReevaluating(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!execution) return;
 
@@ -205,6 +234,9 @@ export default function ExecutionDetailsPage() {
   const failedCount = execution.results.filter((r) =>
     ["failed", "error", "timeout"].includes(r.status),
   ).length;
+  const evalFailedCount = execution.results.filter(
+    (r) => r.evaluation_error !== null,
+  ).length;
 
   const avgScore = (() => {
     const scores = execution.results
@@ -225,6 +257,27 @@ export default function ExecutionDetailsPage() {
           返回 Benchmark
         </Button>
         <div className="flex gap-2">
+          {execution.status === "completed" &&
+            (execution.evaluation_status === "failed" ||
+              !execution.evaluation_status) && (
+              <Button
+                variant="outline"
+                onClick={handleReevaluate}
+                disabled={reevaluating}
+              >
+                {reevaluating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    评估中...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 mr-2" />
+                    重新评估
+                  </>
+                )}
+              </Button>
+            )}
           <Button
             variant="outline"
             className="text-destructive hover:text-destructive"
@@ -251,10 +304,18 @@ export default function ExecutionDetailsPage() {
         </p>
         <div className="flex gap-4 mt-4 text-sm text-muted-foreground">
           <span>状态: {getStatusBadge(execution.status)}</span>
+          <span>评估状态:{" "}
+            {execution.evaluation_status
+              ? getStatusBadge(execution.evaluation_status)
+              : "-"}
+          </span>
           <span>总任务数: {execution.results.length}</span>
           <span>成功: {completedCount}</span>
           <span>失败: {failedCount}</span>
-          {avgScore !== null && <span>平均评分: {avgScore.toFixed(1)}</span>}
+          {evalFailedCount > 0 && (
+            <span className="text-orange-600">评估失败: {evalFailedCount}</span>
+          )}
+          {avgScore !== null && <span>平均评分: {avgScore?.toFixed(1)}</span>}
         </div>
       </div>
 
@@ -347,7 +408,7 @@ export default function ExecutionDetailsPage() {
                               : "text-red-600"
                         }`}
                       >
-                        {result.score.toFixed(1)}
+                        {result.score?.toFixed(1)}
                       </span>
                     ) : (
                       "-"
@@ -431,7 +492,7 @@ export default function ExecutionDetailsPage() {
                           : "text-red-600"
                     }`}
                   >
-                    评分: {selectedResult.score.toFixed(1)}
+                    评分: {selectedResult.score?.toFixed(1)}
                   </span>
                 )}
               </div>
@@ -463,9 +524,19 @@ export default function ExecutionDetailsPage() {
               {/* 错误信息 */}
               {selectedResult.error_message && (
                 <div>
-                  <h4 className="font-semibold mb-2 text-red-600">错误信息</h4>
+                  <h4 className="font-semibold mb-2 text-red-600">执行错误</h4>
                   <div className="bg-red-50 border border-red-200 p-3 rounded-md text-sm text-red-700 whitespace-pre-wrap">
                     {selectedResult.error_message}
+                  </div>
+                </div>
+              )}
+
+              {/* 评估错误信息 */}
+              {selectedResult.evaluation_error && (
+                <div>
+                  <h4 className="font-semibold mb-2 text-orange-600">评估错误</h4>
+                  <div className="bg-orange-50 border border-orange-200 p-3 rounded-md text-sm text-orange-700 whitespace-pre-wrap">
+                    {selectedResult.evaluation_error}
                   </div>
                 </div>
               )}

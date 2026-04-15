@@ -96,8 +96,11 @@ export default function BenchmarkDetailsPage() {
   const benchmarkId = parseInt(params.id as string);
 
   const [loading, setLoading] = useState(true);
-  const [benchmark, setBenchmark] = useState<BenchmarkWithExecutions | null>(null);
-  const [selectedExecution, setSelectedExecution] = useState<ExecutionWithDetails | null>(null);
+  const [benchmark, setBenchmark] = useState<BenchmarkWithExecutions | null>(
+    null,
+  );
+  const [selectedExecution, setSelectedExecution] =
+    useState<ExecutionWithDetails | null>(null);
   const [activeTab, setActiveTab] = useState<string>("");
 
   useEffect(() => {
@@ -170,7 +173,10 @@ export default function BenchmarkDetailsPage() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+    const variants: Record<
+      string,
+      "default" | "secondary" | "destructive" | "outline"
+    > = {
       pending: "secondary",
       running: "default",
       completed: "default",
@@ -220,7 +226,10 @@ export default function BenchmarkDetailsPage() {
     try {
       return JSON.parse(str);
     } catch {
-      return str.split(/[\n,;]/).map((s) => s.trim()).filter(Boolean);
+      return str
+        .split(/[\n,;]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
     }
   };
 
@@ -276,7 +285,7 @@ export default function BenchmarkDetailsPage() {
         </div>
       </div>
 
-      {(!benchmark.executions || benchmark.executions.length === 0) ? (
+      {!benchmark.executions || benchmark.executions.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Play className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -338,9 +347,11 @@ export default function BenchmarkDetailsPage() {
 }
 
 function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
-  const completedCount = execution.results.filter((r) => r.status === "completed").length;
+  const completedCount = execution.results.filter(
+    (r) => r.status === "completed",
+  ).length;
   const failedCount = execution.results.filter((r) =>
-    ["failed", "error", "timeout"].includes(r.status)
+    ["failed", "error", "timeout"].includes(r.status),
   ).length;
 
   const formatDuration = (ms: number | null) => {
@@ -350,7 +361,10 @@ function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+    const variants: Record<
+      string,
+      "default" | "secondary" | "destructive" | "outline"
+    > = {
       pending: "secondary",
       running: "default",
       completed: "default",
@@ -386,15 +400,21 @@ function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-green-600">成功</CardTitle>
+            <CardTitle className="text-sm font-medium text-green-600">
+              成功
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{completedCount}</div>
+            <div className="text-2xl font-bold text-green-600">
+              {completedCount}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-red-600">失败</CardTitle>
+            <CardTitle className="text-sm font-medium text-red-600">
+              失败
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">{failedCount}</div>
@@ -412,7 +432,7 @@ function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
                   .map((r) => r.score!);
                 if (scores.length === 0) return "-";
                 const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-                return avg.toFixed(1);
+                return avg.toFixed(1) || "--";
               })()}
             </div>
           </CardContent>
@@ -449,11 +469,11 @@ function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
                       result.score >= 80
                         ? "text-green-600"
                         : result.score >= 60
-                        ? "text-yellow-600"
-                        : "text-red-600"
+                          ? "text-yellow-600"
+                          : "text-red-600"
                     }`}
                   >
-                    {result.score.toFixed(1)}
+                    {result.score?.toFixed(1) || "--"}
                   </span>
                 ) : (
                   "-"

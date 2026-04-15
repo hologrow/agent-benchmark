@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
-import { readFileSync } from 'fs';
 import { join } from 'path';
+import { migrate } from './migrator';
 
 const DB_PATH = process.env.DATABASE_PATH || join(process.cwd(), 'data', 'benchmark.db');
 
@@ -18,36 +18,14 @@ export function getDatabase(): Database.Database {
 function initializeDatabase() {
   if (!db) return;
 
-  const schemaPath = join(process.cwd(), 'src', 'lib', 'db', 'schema.sql');
-  const schema = readFileSync(schemaPath, 'utf-8');
+  // 运行迁移（使用新的迁移系统）
+  const migrationsDir = join(process.cwd(), 'src', 'lib', 'db', 'migrations');
+  const result = migrate(db, migrationsDir);
 
-  // 分割 SQL 语句并执行
-  const statements = schema.split(';').filter(s => s.trim());
-  for (const statement of statements) {
-    try {
-      db.exec(statement + ';');
-    } catch (e) {
-      // 忽略已存在的表错误
-    }
-  }
-
-  // 运行迁移
-  runMigrations();
-}
-
-function runMigrations() {
-  if (!db) return;
-
-  // 检查并添加 evaluators.model_id 列
-  try {
-    const tableInfo = db.prepare("PRAGMA table_info(evaluators)").all() as { name: string }[];
-    const hasModelId = tableInfo.some(col => col.name === 'model_id');
-    if (!hasModelId) {
-      db.exec('ALTER TABLE evaluators ADD COLUMN model_id INTEGER REFERENCES models(id)');
-      console.log('Migration: added model_id column to evaluators table');
-    }
-  } catch (e) {
-    console.error('Migration failed for evaluators.model_id:', e);
+  if (!result.success) {
+    console.error('[Database] Migration failed:', result.error);
+  } else if (result.executed.length > 0) {
+    console.log('[Database] Migrations executed:', result.executed);
   }
 }
 
@@ -233,33 +211,33 @@ export interface Benchmark {
   test_case_ids: string;
   evaluator_id: number | null;
   run_config: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  started_at: string | null;
-  completed_at: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export function getAllBenchmarks(): Benchmark[] {
   const db = getDatabase();
-  return db.prepare('SELECT * FROM benchmark_runs ORDER BY created_at DESC').all() as Benchmark[];
+  return db.prepare('SELECT * FROM benchmarks ORDER BY created_at DESC').all() as Benchmark[];
 }
 
 export function getBenchmarkById(id: number): Benchmark | undefined {
   const db = getDatabase();
-  return db.prepare('SELECT * FROM benchmark_runs WHERE id = ?').get(id) as Benchmark | undefined;
+  return db.prepare('SELECT * FROM benchmarks WHERE id = ?').get(id) as Benchmark | undefined;
 }
 
-export function createBenchmark(benchmark: Omit<Benchmark, 'id' | 'created_at' | 'started_at' | 'completed_at'>): Benchmark {
+export function createBenchmark(benchmark: Omit<Benchmark, 'id' | 'created_at' | 'updated_at'>): Benchmark {
   const db = getDatabase();
+  const now = new Date().toISOString();
   const result = db.prepare(
-    'INSERT INTO benchmark_runs (name, description, agent_ids, test_case_ids, evaluator_id, run_config, status) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(benchmark.name, benchmark.description, benchmark.agent_ids, benchmark.test_case_ids, benchmark.evaluator_id, benchmark.run_config, benchmark.status);
+    'INSERT INTO benchmarks (name, description, agent_ids, test_case_ids, evaluator_id, run_config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(benchmark.name, benchmark.description, benchmark.agent_ids, benchmark.test_case_ids, benchmark.evaluator_id, benchmark.run_config, now, now);
 
   return getBenchmarkById(result.lastInsertRowid as number)!;
 }
 
-export function updateBenchmark(id: number, benchmark: Partial<Omit<Benchmark, 'id' | 'created_at'>>): Benchmark {
+export function updateBenchmark(id: number, benchmark: Partial<Omit<Benchmark, 'id' | 'created_at' | 'updated_at'>>): Benchmark {
   const db = getDatabase();
+  const now = new Date().toISOString();
   const sets: string[] = [];
   const values: unknown[] = [];
 
@@ -269,79 +247,20 @@ export function updateBenchmark(id: number, benchmark: Partial<Omit<Benchmark, '
   if (benchmark.test_case_ids !== undefined) { sets.push('test_case_ids = ?'); values.push(benchmark.test_case_ids); }
   if (benchmark.evaluator_id !== undefined) { sets.push('evaluator_id = ?'); values.push(benchmark.evaluator_id); }
   if (benchmark.run_config !== undefined) { sets.push('run_config = ?'); values.push(benchmark.run_config); }
-  if (benchmark.status !== undefined) { sets.push('status = ?'); values.push(benchmark.status); }
-  if (benchmark.started_at !== undefined) { sets.push('started_at = ?'); values.push(benchmark.started_at); }
-  if (benchmark.completed_at !== undefined) { sets.push('completed_at = ?'); values.push(benchmark.completed_at); }
+  sets.push('updated_at = ?');
+  values.push(now);
   values.push(id);
 
-  db.prepare(`UPDATE benchmark_runs SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+  db.prepare(`UPDATE benchmarks SET ${sets.join(', ')} WHERE id = ?`).run(...values);
   return getBenchmarkById(id)!;
 }
 
 export function deleteBenchmark(id: number): void {
   const db = getDatabase();
-  db.prepare('DELETE FROM benchmark_runs WHERE id = ?').run(id);
+  db.prepare('DELETE FROM benchmarks WHERE id = ?').run(id);
 }
 
-export interface BenchmarkRun {
-  id: number;
-  name: string;
-  description: string;
-  agent_ids: string;
-  test_case_ids: string;
-  evaluator_id: number | null;
-  run_config: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  started_at: string | null;
-  completed_at: string | null;
-  created_at: string;
-}
-
-export function getAllBenchmarkRuns(): BenchmarkRun[] {
-  const db = getDatabase();
-  return db.prepare('SELECT * FROM benchmark_runs ORDER BY created_at DESC').all() as BenchmarkRun[];
-}
-
-export function getBenchmarkRunById(id: number): BenchmarkRun | undefined {
-  const db = getDatabase();
-  return db.prepare('SELECT * FROM benchmark_runs WHERE id = ?').get(id) as BenchmarkRun | undefined;
-}
-
-export function createBenchmarkRun(run: Omit<BenchmarkRun, 'id' | 'created_at' | 'started_at' | 'completed_at'>): BenchmarkRun {
-  const db = getDatabase();
-  const result = db.prepare(
-    'INSERT INTO benchmark_runs (name, description, agent_ids, test_case_ids, evaluator_id, run_config, status) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(run.name, run.description, run.agent_ids, run.test_case_ids, run.evaluator_id, run.run_config, run.status);
-
-  return getBenchmarkRunById(result.lastInsertRowid as number)!;
-}
-
-export function updateBenchmarkRun(id: number, run: Partial<Omit<BenchmarkRun, 'id' | 'created_at'>>): BenchmarkRun {
-  const db = getDatabase();
-  const sets: string[] = [];
-  const values: unknown[] = [];
-
-  if (run.name !== undefined) { sets.push('name = ?'); values.push(run.name); }
-  if (run.description !== undefined) { sets.push('description = ?'); values.push(run.description); }
-  if (run.agent_ids !== undefined) { sets.push('agent_ids = ?'); values.push(run.agent_ids); }
-  if (run.test_case_ids !== undefined) { sets.push('test_case_ids = ?'); values.push(run.test_case_ids); }
-  if (run.evaluator_id !== undefined) { sets.push('evaluator_id = ?'); values.push(run.evaluator_id); }
-  if (run.run_config !== undefined) { sets.push('run_config = ?'); values.push(run.run_config); }
-  if (run.status !== undefined) { sets.push('status = ?'); values.push(run.status); }
-  if (run.started_at !== undefined) { sets.push('started_at = ?'); values.push(run.started_at); }
-  if (run.completed_at !== undefined) { sets.push('completed_at = ?'); values.push(run.completed_at); }
-  values.push(id);
-
-  db.prepare(`UPDATE benchmark_runs SET ${sets.join(', ')} WHERE id = ?`).run(...values);
-  return getBenchmarkRunById(id)!;
-}
-
-export function deleteBenchmarkRun(id: number): void {
-  const db = getDatabase();
-  db.prepare('DELETE FROM benchmark_runs WHERE id = ?').run(id);
-}
-
-// Benchmark Result 相关操作
+// Benchmark Result 相关操作（已弃用，保留别名以兼容旧代码）
 export interface BenchmarkResult {
   id: number;
   execution_id: number;
@@ -352,6 +271,7 @@ export interface BenchmarkResult {
   output_file: string | null;
   execution_time_ms: number | null;
   error_message: string | null;
+  evaluation_error: string | null;
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
@@ -401,6 +321,7 @@ export function updateBenchmarkResult(id: number, result: Partial<Omit<Benchmark
   if (result.output_file !== undefined) { sets.push('output_file = ?'); values.push(result.output_file); }
   if (result.execution_time_ms !== undefined) { sets.push('execution_time_ms = ?'); values.push(result.execution_time_ms); }
   if (result.error_message !== undefined) { sets.push('error_message = ?'); values.push(result.error_message); }
+  if (result.evaluation_error !== undefined) { sets.push('evaluation_error = ?'); values.push(result.evaluation_error); }
   if (result.started_at !== undefined) { sets.push('started_at = ?'); values.push(result.started_at); }
   if (result.completed_at !== undefined) { sets.push('completed_at = ?'); values.push(result.completed_at); }
   values.push(id);
@@ -453,6 +374,7 @@ export interface Execution {
   benchmark_id: number;
   name: string | null;
   status: 'pending' | 'running' | 'completed' | 'failed';
+  evaluation_status: 'pending' | 'running' | 'completed' | 'failed' | null;
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
@@ -466,6 +388,7 @@ export function getExecutionsByBenchmarkId(benchmarkId: number): Execution[] {
       benchmark_id,
       name,
       status,
+      evaluation_status,
       started_at,
       completed_at,
       created_at
@@ -483,6 +406,7 @@ export function getExecutionById(id: number): Execution | undefined {
       benchmark_id,
       name,
       status,
+      evaluation_status,
       started_at,
       completed_at,
       created_at
@@ -513,7 +437,7 @@ export function createExecution(execution: {
   return getExecutionById(result.lastInsertRowid as number)!;
 }
 
-export function updateExecution(id: number, execution: Partial<Pick<Execution, 'status' | 'started_at' | 'completed_at'>>): Execution {
+export function updateExecution(id: number, execution: Partial<Pick<Execution, 'status' | 'started_at' | 'completed_at' | 'evaluation_status'>>): Execution {
   const db = getDatabase();
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -521,6 +445,7 @@ export function updateExecution(id: number, execution: Partial<Pick<Execution, '
   if (execution.status !== undefined) { sets.push('status = ?'); values.push(execution.status); }
   if (execution.started_at !== undefined) { sets.push('started_at = ?'); values.push(execution.started_at); }
   if (execution.completed_at !== undefined) { sets.push('completed_at = ?'); values.push(execution.completed_at); }
+  if (execution.evaluation_status !== undefined) { sets.push('evaluation_status = ?'); values.push(execution.evaluation_status); }
   values.push(id);
 
   db.prepare(`UPDATE benchmark_executions SET ${sets.join(', ')} WHERE id = ?`).run(...values);
@@ -543,6 +468,7 @@ export interface Result {
   output_file: string | null;
   execution_time_ms: number | null;
   error_message: string | null;
+  evaluation_error: string | null;
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
@@ -576,13 +502,34 @@ export function getExecutionDetails(executionId: number) {
 
   const results = db.prepare(`
     SELECT
-      br.*,
+      br.id,
+      br.execution_id,
+      br.agent_id,
+      br.test_case_id,
+      br.status,
+      br.actual_output,
+      br.output_file,
+      br.execution_time_ms,
+      br.error_message,
+      br.evaluation_error,
+      br.started_at,
+      br.completed_at,
+      br.created_at,
       a.name as agent_name,
       tc.test_id,
-      tc.name as test_case_name
+      tc.name as test_case_name,
+      tc.input as test_input,
+      tc.expected_output,
+      tc.key_points,
+      tc.forbidden_points,
+      e.score,
+      e.report as evaluation_report,
+      e.key_points_met,
+      e.forbidden_points_violated
     FROM benchmark_results br
     JOIN agents a ON br.agent_id = a.id
     JOIN test_cases tc ON br.test_case_id = tc.id
+    LEFT JOIN evaluations e ON e.result_id = br.id
     WHERE br.execution_id = ?
     ORDER BY br.id
   `).all(executionId);

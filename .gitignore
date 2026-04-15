@@ -49,3 +49,4 @@ next-env.d.ts
 # Results
 /results/
 data/
+__pycache__/

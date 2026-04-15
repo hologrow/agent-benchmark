@@ -50,6 +50,7 @@ export async function POST(
           output_file: null,
           execution_time_ms: null,
           error_message: null,
+          evaluation_error: null,
           started_at: null,
           completed_at: null
         });

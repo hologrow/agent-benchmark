@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS benchmark_executions (
     benchmark_id INTEGER NOT NULL,
     name TEXT, -- 执行批次名称，如 "第1次执行"
     status TEXT DEFAULT 'pending', -- pending, running, completed, failed
+    evaluation_status TEXT, -- pending, running, completed, failed
     started_at DATETIME,
     completed_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -74,7 +75,8 @@ CREATE TABLE IF NOT EXISTS benchmark_results (
     actual_output TEXT, -- Agent 实际输出
     output_file TEXT, -- 输出文件路径
     execution_time_ms INTEGER,
-    error_message TEXT,
+    error_message TEXT, -- Agent 执行错误信息
+    evaluation_error TEXT, -- 评估过程错误信息
     started_at DATETIME,
     completed_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

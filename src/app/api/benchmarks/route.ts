@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getAllBenchmarkRuns,
-  createBenchmarkRun
+  getAllBenchmarks,
+  createBenchmark
 } from '@/lib/db';
 
 // GET /api/benchmarks - 获取所有 benchmark 配置
 export async function GET() {
   try {
-    const benchmarks = getAllBenchmarkRuns();
+    const benchmarks = getAllBenchmarks();
     return NextResponse.json({ benchmarks });
   } catch (error) {
     console.error('Error fetching benchmarks:', error);
@@ -59,14 +59,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const benchmark = createBenchmarkRun({
+    const benchmark = createBenchmark({
       name,
       description: description || '',
       agent_ids: JSON.stringify(agent_ids),
       test_case_ids: JSON.stringify(test_case_ids),
       evaluator_id: evaluator_id || null,
-      run_config: run_config ? JSON.stringify(run_config) : '{}',
-      status: 'pending'
+      run_config: run_config ? JSON.stringify(run_config) : '{}'
     });
 
     return NextResponse.json({ benchmark }, { status: 201 });

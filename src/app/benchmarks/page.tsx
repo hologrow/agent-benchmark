@@ -43,7 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Play, Loader2, PlayCircle, CheckSquare, History, Trash2 } from "lucide-react";
+import { Plus, Play, Loader2, PlayCircle, CheckSquare, History, Trash2, Pencil } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -82,6 +82,7 @@ interface Benchmark {
   agent_ids: string;
   test_case_ids: string;
   evaluator_id: number | null;
+  run_config: string;
   created_at: string;
   updated_at: string;
   latestStats: ExecutionStats | null;
@@ -118,6 +119,7 @@ export default function BenchmarksPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [benchmarkToDelete, setBenchmarkToDelete] = useState<Benchmark | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [editingBenchmark, setEditingBenchmark] = useState<Benchmark | null>(null);
   const router = useRouter();
   const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
   const [selectedTestCases, setSelectedTestCases] = useState<number[]>([]);
@@ -176,8 +178,14 @@ export default function BenchmarksPage() {
         }
       }
 
-      const response = await fetch("/api/benchmarks", {
-        method: "POST",
+      const isEditing = editingBenchmark !== null;
+      const url = isEditing
+        ? `/api/benchmarks/${editingBenchmark.id}`
+        : "/api/benchmarks";
+      const method = isEditing ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...values,
@@ -186,19 +194,20 @@ export default function BenchmarksPage() {
       });
 
       if (response.ok) {
-        toast.success("Benchmark 已创建");
+        toast.success(isEditing ? "Benchmark 已更新" : "Benchmark 已创建");
         setDialogOpen(false);
+        setEditingBenchmark(null);
         form.reset();
         setSelectedAgents([]);
         setSelectedTestCases([]);
         fetchData();
       } else {
         const error = await response.json();
-        toast.error(error.error || "创建失败");
+        toast.error(error.error || (isEditing ? "更新失败" : "创建失败"));
       }
     } catch (error) {
-      console.error("Error creating benchmark:", error);
-      toast.error("创建失败");
+      console.error("Error saving benchmark:", error);
+      toast.error(editingBenchmark ? "更新失败" : "创建失败");
     }
   };
 
@@ -279,6 +288,7 @@ export default function BenchmarksPage() {
   };
 
   const openCreateDialog = () => {
+    setEditingBenchmark(null);
     setSelectedAgents([]);
     setSelectedTestCases([]);
     form.reset({
@@ -288,6 +298,35 @@ export default function BenchmarksPage() {
       test_case_ids: [],
       evaluator_id: undefined,
       run_config: JSON.stringify(defaultRunConfig, null, 2),
+    });
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (benchmark: Benchmark) => {
+    setEditingBenchmark(benchmark);
+    const agentIds = JSON.parse(benchmark.agent_ids) as number[];
+    const testCaseIds = JSON.parse(benchmark.test_case_ids) as number[];
+    setSelectedAgents(agentIds);
+    setSelectedTestCases(testCaseIds);
+
+    // Parse run_config if exists
+    let runConfigStr = JSON.stringify(defaultRunConfig, null, 2);
+    if (benchmark.run_config) {
+      try {
+        const runConfig = JSON.parse(benchmark.run_config);
+        runConfigStr = JSON.stringify(runConfig, null, 2);
+      } catch {
+        // Use default if parsing fails
+      }
+    }
+
+    form.reset({
+      name: benchmark.name,
+      description: benchmark.description || "",
+      agent_ids: agentIds,
+      test_case_ids: testCaseIds,
+      evaluator_id: benchmark.evaluator_id || undefined,
+      run_config: runConfigStr,
     });
     setDialogOpen(true);
   };
@@ -376,6 +415,14 @@ export default function BenchmarksPage() {
                         <Button
                           size="sm"
                           variant="outline"
+                          onClick={() => openEditDialog(benchmark)}
+                        >
+                          <Pencil className="h-4 w-4 mr-1" />
+                          编辑
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           onClick={() => router.push(`/benchmarks/${benchmark.id}`)}
                         >
                           <History className="h-4 w-4 mr-1" />
@@ -406,12 +453,19 @@ export default function BenchmarksPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => {
+        setDialogOpen(open);
+        if (!open) setEditingBenchmark(null);
+      }}>
         <DialogContent className="!max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>新建 Benchmark</DialogTitle>
+            <DialogTitle>
+              {editingBenchmark ? "编辑 Benchmark" : "新建 Benchmark"}
+            </DialogTitle>
             <DialogDescription>
-              配置 Benchmark 测试计划，选择 Agents 和测试用例
+              {editingBenchmark
+                ? "查看和修改 Benchmark 配置"
+                : "配置 Benchmark 测试计划，选择 Agents 和测试用例"}
             </DialogDescription>
           </DialogHeader>
 
@@ -579,7 +633,9 @@ export default function BenchmarksPage() {
               />
 
               <DialogFooter>
-                <Button type="submit">创建</Button>
+                <Button type="submit">
+                  {editingBenchmark ? "保存" : "创建"}
+                </Button>
               </DialogFooter>
             </form>
           </Form>

@@ -24,7 +24,29 @@ export async function GET(
     }
 
     const executions = getExecutionsByBenchmarkId(benchmarkId);
-    return NextResponse.json({ executions });
+
+    // 获取每个 execution 的平均分
+    const executionsWithScore = executions.map(exec => {
+      const details = getExecutionDetails(exec.id);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const results = (details?.results || []) as any[];
+      const scores: number[] = [];
+      for (const r of results) {
+        if (r.score !== null && r.score !== undefined) {
+          scores.push(Number(r.score));
+        }
+      }
+      const avgScore = scores.length > 0
+        ? scores.reduce((a, b) => a + b, 0) / scores.length
+        : null;
+
+      return {
+        ...exec,
+        avgScore
+      };
+    });
+
+    return NextResponse.json({ executions: executionsWithScore });
   } catch (error) {
     console.error('Error fetching executions:', error);
     return NextResponse.json(

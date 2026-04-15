@@ -2,6 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
+import {
   Card,
   CardContent,
   CardDescription,
@@ -34,6 +43,7 @@ interface Benchmark {
   id: number;
   name: string;
   description: string;
+  created_at: string;
 }
 
 interface Execution {
@@ -69,6 +79,13 @@ interface BenchmarkResult {
   forbidden_points_violated: string | null;
 }
 
+interface ExecutionHistory {
+  id: number;
+  execution_number: number;
+  avg_score: number | null;
+  created_at: string;
+}
+
 export default function BenchmarkPage() {
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,10 +96,69 @@ export default function BenchmarkPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [executionToDelete, setExecutionToDelete] = useState<Execution | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [benchmarks, setBenchmarks] = useState<Benchmark[]>([]);
+  const [executionHistory, setExecutionHistory] = useState<Map<number, ExecutionHistory[]>>(new Map());
+  const [chartLoading, setChartLoading] = useState(true);
 
   useEffect(() => {
     fetchExecutions();
+    fetchBenchmarksWithHistory();
   }, []);
+
+  const fetchBenchmarksWithHistory = async () => {
+    try {
+      const benchmarksRes = await fetch('/api/benchmarks');
+      const benchmarksData = await benchmarksRes.json();
+      const benchmarksList: Benchmark[] = benchmarksData.benchmarks || [];
+
+      // 按创建时间排序（最新的在前）
+      benchmarksList.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      setBenchmarks(benchmarksList);
+
+      // 获取每个 benchmark 的执行历史
+      const historyMap = new Map<number, ExecutionHistory[]>();
+      await Promise.all(
+        benchmarksList.map(async (bm) => {
+          const history = await fetchExecutionHistory(bm.id);
+          if (history.length > 0) {
+            historyMap.set(bm.id, history);
+          }
+        })
+      );
+      setExecutionHistory(historyMap);
+    } catch (error) {
+      console.error('Error fetching benchmarks:', error);
+    } finally {
+      setChartLoading(false);
+    }
+  };
+
+  const fetchExecutionHistory = async (benchmarkId: number): Promise<ExecutionHistory[]> => {
+    try {
+      const response = await fetch(`/api/benchmarks/${benchmarkId}/executions`);
+      if (response.ok) {
+        const data = await response.json();
+        // 按创建时间排序（最早的在前，用于计算执行序号）
+        const sorted = (data.executions || []).sort(
+          (a: { created_at: string }, b: { created_at: string }) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        // 添加执行序号并计算平均分
+        return sorted.map((exec: { id: number; created_at: string; avgScore?: number | null }, index: number) => ({
+          id: exec.id,
+          execution_number: index + 1,
+          avg_score: exec.avgScore ?? null,
+          created_at: exec.created_at,
+        }));
+      }
+    } catch (error) {
+      console.error(`Error fetching history for benchmark ${benchmarkId}:`, error);
+    }
+    return [];
+  };
 
   const fetchExecutions = async () => {
     try {
@@ -208,6 +284,88 @@ export default function BenchmarkPage() {
           查看所有 Benchmark 执行结果和详细评分
         </p>
       </div>
+
+      {/* 分数趋势图表 - 仅显示有执行记录的 benchmark */}
+      {!chartLoading && benchmarks.length > 0 && executionHistory.size > 0 && (
+        <div className="mb-8">
+          <h2 className="text-xl font-semibold mb-4">分数趋势</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {benchmarks
+              .filter((bm) => executionHistory.has(bm.id))
+              .map((benchmark) => {
+                const history = executionHistory.get(benchmark.id) || [];
+                const hasScores = history.some((h) => h.avg_score !== null);
+
+                return (
+                  <Card key={`chart-${benchmark.id}`}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">
+                        {benchmark.name}
+                      </CardTitle>
+                      <CardDescription>
+                        共 {history.length} 次执行
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {hasScores ? (
+                        <div className="h-[200px] w-full min-w-0 min-h-0">
+                          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                            <LineChart data={history}>
+                              <CartesianGrid
+                                strokeDasharray="3 3"
+                                stroke="#e5e7eb"
+                              />
+                              <XAxis
+                                dataKey="execution_number"
+                                tick={{ fontSize: 12 }}
+                                label={{
+                                  value: "执行次数",
+                                  position: "insideBottom",
+                                  offset: -5,
+                                  fontSize: 10,
+                                }}
+                              />
+                              <YAxis
+                                domain={[0, 100]}
+                                tick={{ fontSize: 12 }}
+                                label={{
+                                  value: "平均分",
+                                  angle: -90,
+                                  position: "insideLeft",
+                                  fontSize: 10,
+                                }}
+                              />
+                              <Tooltip
+                                formatter={(value) =>
+                                  value !== null && value !== undefined
+                                    ? [`${Number(value).toFixed(1)}`, "平均分"]
+                                    : ["无数据", "平均分"]
+                                }
+                                labelFormatter={(label) => `第 ${label} 次执行`}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="avg_score"
+                                stroke="#3b82f6"
+                                strokeWidth={2}
+                                dot={{ r: 3, fill: "#3b82f6" }}
+                                connectNulls
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
+                          暂无评分数据
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
