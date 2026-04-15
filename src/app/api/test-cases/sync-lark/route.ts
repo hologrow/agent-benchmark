@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Client, Domain } from "@larksuiteoapi/node-sdk";
-import { createTestCase, updateTestCase, getAllTestCases } from "@/lib/db";
+import { createTestCase, updateTestCase, getAllTestCases, createTestSet } from "@/lib/db";
 
 // 初始化 Lark 客户端
 function getLarkClient() {
@@ -123,6 +123,9 @@ export async function POST(request: NextRequest) {
       viewId,
       syncMode = "upsert",
       columnMapping,
+      createTestSet: shouldCreateTestSet = true,
+      testSetName,
+      testSetDescription,
     } = body;
 
     if (!appToken || !tableId) {
@@ -183,6 +186,7 @@ export async function POST(request: NextRequest) {
     let updated = 0;
     let skipped = 0;
     const errors: string[] = [];
+    const createdTestCaseIds: number[] = [];
 
     for (let i = 0; i < records.length; i++) {
       const record = records[i];
@@ -198,15 +202,52 @@ export async function POST(request: NextRequest) {
         if (existing && syncMode !== "create_only") {
           updateTestCase(existing.id, testCase);
           updated++;
+          createdTestCaseIds.push(existing.id);
         } else if (!existing && syncMode !== "update_only") {
-          createTestCase(testCase);
+          const newTestCase = createTestCase(testCase);
           created++;
-        } else {
+          createdTestCaseIds.push(newTestCase.id);
+        } else if (existing) {
+          createdTestCaseIds.push(existing.id);
           skipped++;
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         errors.push(`Record ${record.record_id}: ${errorMsg}`);
+      }
+    }
+
+    // 创建测试集
+    let testSet = null;
+    if (shouldCreateTestSet && createdTestCaseIds.length > 0) {
+      try {
+        // 获取文档信息用于命名
+        let defaultTestSetName = testSetName;
+        if (!defaultTestSetName) {
+          try {
+            const appInfo = await client.bitable.app.get({
+              path: { app_token: appToken },
+            });
+            defaultTestSetName = appInfo.data?.app?.name
+              ? `${appInfo.data.app.name} - ${new Date().toLocaleDateString('zh-CN')}`
+              : `Lark同步 - ${new Date().toLocaleDateString('zh-CN')}`;
+          } catch {
+            defaultTestSetName = `Lark同步 - ${new Date().toLocaleDateString('zh-CN')}`;
+          }
+        }
+
+        testSet = createTestSet(
+          {
+            name: defaultTestSetName,
+            description: testSetDescription || `从 Lark 多维表格同步的测试集，共 ${createdTestCaseIds.length} 个用例`,
+            source: 'lark',
+            source_url: `https://base.larkoffice.com/app/${appToken}/table/${tableId}`,
+          },
+          createdTestCaseIds
+        );
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        errors.push(`创建测试集失败: ${errorMsg}`);
       }
     }
 
@@ -219,6 +260,11 @@ export async function POST(request: NextRequest) {
         skipped,
         errors: errors.length,
       },
+      testSet: testSet ? {
+        id: testSet.id,
+        name: testSet.name,
+        testCaseCount: createdTestCaseIds.length,
+      } : null,
       errors: errors.slice(0, 10),
     });
   } catch (error) {

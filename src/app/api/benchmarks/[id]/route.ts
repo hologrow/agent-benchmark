@@ -45,6 +45,7 @@ export async function PUT(
       description,
       agent_ids,
       test_case_ids,
+      test_set_id,
       evaluator_id,
       run_config
     } = body;
@@ -62,6 +63,7 @@ export async function PUT(
     if (description !== undefined) updateData.description = description;
     if (agent_ids !== undefined) updateData.agent_ids = JSON.stringify(agent_ids);
     if (test_case_ids !== undefined) updateData.test_case_ids = JSON.stringify(test_case_ids);
+    if (test_set_id !== undefined) updateData.test_set_id = test_set_id;
     if (evaluator_id !== undefined) updateData.evaluator_id = evaluator_id;
     if (run_config !== undefined) updateData.run_config = JSON.stringify(run_config);
 

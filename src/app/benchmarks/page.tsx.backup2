@@ -43,7 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Play, Loader2, PlayCircle, History, Trash2, Pencil, FolderOpen } from "lucide-react";
+import { Plus, Play, Loader2, PlayCircle, CheckSquare, History, Trash2, Pencil } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -55,11 +55,10 @@ interface Agent {
   name: string;
 }
 
-interface TestSet {
+interface TestCase {
   id: number;
+  test_id: string;
   name: string;
-  description: string;
-  test_case_count?: number;
 }
 
 interface Evaluator {
@@ -81,7 +80,6 @@ interface Benchmark {
   name: string;
   description: string;
   agent_ids: string;
-  test_set_id: number | null;
   test_case_ids: string;
   evaluator_id: number | null;
   run_config: string;
@@ -94,7 +92,7 @@ const formSchema = z.object({
   name: z.string().min(1, "名称不能为空"),
   description: z.string().optional(),
   agent_ids: z.array(z.number()).min(1, "至少选择一个 Agent"),
-  test_set_id: z.number().min(1, "请选择测试集"),
+  test_case_ids: z.array(z.number()).min(1, "至少选择一个测试用例"),
   evaluator_id: z.number().min(1, "请选择评估器"),
   run_config: z.string().optional(),
 });
@@ -114,7 +112,7 @@ const defaultRunConfig = {
 export default function BenchmarksPage() {
   const [benchmarks, setBenchmarks] = useState<Benchmark[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [testSets, setTestSets] = useState<TestSet[]>([]);
+  const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [evaluators, setEvaluators] = useState<Evaluator[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -124,6 +122,7 @@ export default function BenchmarksPage() {
   const [editingBenchmark, setEditingBenchmark] = useState<Benchmark | null>(null);
   const router = useRouter();
   const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
+  const [selectedTestCases, setSelectedTestCases] = useState<number[]>([]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -131,7 +130,7 @@ export default function BenchmarksPage() {
       name: "",
       description: "",
       agent_ids: [],
-      test_set_id: undefined,
+      test_case_ids: [],
       evaluator_id: undefined,
       run_config: JSON.stringify(defaultRunConfig, null, 2),
     },
@@ -143,34 +142,22 @@ export default function BenchmarksPage() {
 
   const fetchData = async () => {
     try {
-      const [benchmarksRes, agentsRes, testSetsRes, evaluatorsRes] =
+      const [benchmarksRes, agentsRes, testCasesRes, evaluatorsRes] =
         await Promise.all([
           fetch("/api/benchmarks"),
           fetch("/api/agents"),
-          fetch("/api/test-sets"),
+          fetch("/api/test-cases"),
           fetch("/api/evaluators"),
         ]);
 
       const benchmarksData = await benchmarksRes.json();
       const agentsData = await agentsRes.json();
-      const testSetsData = await testSetsRes.json();
+      const testCasesData = await testCasesRes.json();
       const evaluatorsData = await evaluatorsRes.json();
-
-      // 为测试集计算用例数量
-      const testSetsWithCount = await Promise.all(
-        (testSetsData.testSets || []).map(async (ts: TestSet) => {
-          const detailRes = await fetch(`/api/test-sets?id=${ts.id}`);
-          const detailData = await detailRes.json();
-          return {
-            ...ts,
-            test_case_count: detailData.testSet?.test_cases?.length || 0,
-          };
-        })
-      );
 
       setBenchmarks(benchmarksData.benchmarks || []);
       setAgents(agentsData.agents || []);
-      setTestSets(testSetsWithCount);
+      setTestCases(testCasesData.testCases || []);
       setEvaluators(evaluatorsData.evaluators || []);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -212,6 +199,7 @@ export default function BenchmarksPage() {
         setEditingBenchmark(null);
         form.reset();
         setSelectedAgents([]);
+        setSelectedTestCases([]);
         fetchData();
       } else {
         const error = await response.json();
@@ -232,6 +220,7 @@ export default function BenchmarksPage() {
       if (response.ok) {
         toast.success("Benchmark 已开始执行");
         const data = await response.json();
+        // 跳转到执行详情页
         router.push(`/executions/${data.executionId}`);
       } else {
         const error = await response.json();
@@ -256,6 +245,14 @@ export default function BenchmarksPage() {
       prev.includes(agentId)
         ? prev.filter((id) => id !== agentId)
         : [...prev, agentId]
+    );
+  };
+
+  const toggleTestCase = (testCaseId: number) => {
+    setSelectedTestCases((prev) =>
+      prev.includes(testCaseId)
+        ? prev.filter((id) => id !== testCaseId)
+        : [...prev, testCaseId]
     );
   };
 
@@ -293,11 +290,12 @@ export default function BenchmarksPage() {
   const openCreateDialog = () => {
     setEditingBenchmark(null);
     setSelectedAgents([]);
+    setSelectedTestCases([]);
     form.reset({
       name: "",
       description: "",
       agent_ids: [],
-      test_set_id: undefined,
+      test_case_ids: [],
       evaluator_id: undefined,
       run_config: JSON.stringify(defaultRunConfig, null, 2),
     });
@@ -307,7 +305,9 @@ export default function BenchmarksPage() {
   const openEditDialog = (benchmark: Benchmark) => {
     setEditingBenchmark(benchmark);
     const agentIds = JSON.parse(benchmark.agent_ids) as number[];
+    const testCaseIds = JSON.parse(benchmark.test_case_ids) as number[];
     setSelectedAgents(agentIds);
+    setSelectedTestCases(testCaseIds);
 
     // Parse run_config if exists
     let runConfigStr = JSON.stringify(defaultRunConfig, null, 2);
@@ -324,7 +324,7 @@ export default function BenchmarksPage() {
       name: benchmark.name,
       description: benchmark.description || "",
       agent_ids: agentIds,
-      test_set_id: benchmark.test_set_id || undefined,
+      test_case_ids: testCaseIds,
       evaluator_id: benchmark.evaluator_id || undefined,
       run_config: runConfigStr,
     });
@@ -333,19 +333,8 @@ export default function BenchmarksPage() {
 
   useEffect(() => {
     form.setValue("agent_ids", selectedAgents);
-  }, [selectedAgents, form]);
-
-  const getTestSetName = (testSetId: number | null) => {
-    if (!testSetId) return "-";
-    const testSet = testSets.find((ts) => ts.id === testSetId);
-    return testSet?.name || `测试集 #${testSetId}`;
-  };
-
-  const getTestSetCount = (testSetId: number | null) => {
-    if (!testSetId) return 0;
-    const testSet = testSets.find((ts) => ts.id === testSetId);
-    return testSet?.test_case_count || 0;
-  };
+    form.setValue("test_case_ids", selectedTestCases);
+  }, [selectedAgents, selectedTestCases, form]);
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -353,7 +342,7 @@ export default function BenchmarksPage() {
         <div>
           <h1 className="text-3xl font-bold">Benchmark 管理</h1>
           <p className="text-muted-foreground mt-2">
-            创建和管理 Benchmark 测试计划，选择测试集和 Agents
+            创建和管理 Benchmark 测试计划，支持多次执行
           </p>
         </div>
         <Button onClick={openCreateDialog}>
@@ -390,8 +379,8 @@ export default function BenchmarksPage() {
                 <TableRow>
                   <TableHead>名称</TableHead>
                   <TableHead>状态</TableHead>
-                  <TableHead>测试集</TableHead>
                   <TableHead>Agent 数</TableHead>
+                  <TableHead>测试用例数</TableHead>
                   <TableHead>最新执行</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
@@ -401,18 +390,10 @@ export default function BenchmarksPage() {
                   <TableRow key={benchmark.id}>
                     <TableCell className="font-medium">{benchmark.name}</TableCell>
                     <TableCell>{getStatusBadge(benchmark.latestStats)}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <FolderOpen className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <div className="font-medium">{getTestSetName(benchmark.test_set_id)}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {getTestSetCount(benchmark.test_set_id)} 个用例
-                          </div>
-                        </div>
-                      </div>
-                    </TableCell>
                     <TableCell>{JSON.parse(benchmark.agent_ids).length}</TableCell>
+                    <TableCell>
+                      {JSON.parse(benchmark.test_case_ids).length}
+                    </TableCell>
                     <TableCell>
                       {benchmark.latestStats ? (
                         <div className="text-sm">
@@ -484,7 +465,7 @@ export default function BenchmarksPage() {
             <DialogDescription>
               {editingBenchmark
                 ? "查看和修改 Benchmark 配置"
-                : "配置 Benchmark 测试计划，选择测试集和 Agents"}
+                : "配置 Benchmark 测试计划，选择 Agents 和测试用例"}
             </DialogDescription>
           </DialogHeader>
 
@@ -532,11 +513,13 @@ export default function BenchmarksPage() {
                         }`}
                         onClick={() => toggleAgent(agent.id)}
                       >
-                        <span className={`h-4 w-4 border rounded ${
-                          selectedAgents.includes(agent.id)
-                            ? "bg-primary border-primary"
-                            : "border-muted-foreground"
-                        }`} />
+                        <CheckSquare
+                          className={`h-4 w-4 ${
+                            selectedAgents.includes(agent.id)
+                              ? "text-primary"
+                              : "text-muted-foreground"
+                          }`}
+                        />
                         <span>{agent.name}</span>
                       </div>
                     ))}
@@ -549,47 +532,39 @@ export default function BenchmarksPage() {
                 </div>
 
                 <div>
-                  <FormField
-                    control={form.control}
-                    name="test_set_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>选择测试集</FormLabel>
-                        <Select
-                          onValueChange={(value) => {
-                            if (value) field.onChange(parseInt(value));
-                          }}
-                          value={field.value?.toString()}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="选择测试集">
-                                {field.value
-                                  ? testSets.find((ts) => ts.id === field.value)?.name || "选择测试集"
-                                  : "选择测试集"}
-                              </SelectValue>
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {testSets.map((testSet) => (
-                              <SelectItem
-                                key={testSet.id}
-                                value={testSet.id.toString()}
-                              >
-                                <div className="flex flex-col">
-                                  <span>{testSet.name}</span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {testSet.test_case_count || 0} 个用例
-                                  </span>
-                                </div>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <FormLabel>选择测试用例</FormLabel>
+                  <div className="mt-2 border rounded-md p-4 space-y-2 max-h-[200px] overflow-y-auto">
+                    {testCases.map((testCase) => (
+                      <div
+                        key={testCase.id}
+                        className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                          selectedTestCases.includes(testCase.id)
+                            ? "bg-primary/10"
+                            : "hover:bg-muted"
+                        }`}
+                        onClick={() => toggleTestCase(testCase.id)}
+                      >
+                        <CheckSquare
+                          className={`h-4 w-4 ${
+                            selectedTestCases.includes(testCase.id)
+                              ? "text-primary"
+                              : "text-muted-foreground"
+                          }`}
+                        />
+                        <div>
+                          <div className="font-medium">{testCase.test_id}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {testCase.name}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {form.formState.errors.test_case_ids && (
+                    <p className="text-sm text-destructive mt-1">
+                      {form.formState.errors.test_case_ids.message}
+                    </p>
+                  )}
                 </div>
               </div>
 

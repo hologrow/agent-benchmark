@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { BarChart3, Database, Users, Settings, PlayCircle, Brain } from 'lucide-react';
+import { BarChart3, Users, Settings, PlayCircle, Brain, FolderOpen } from 'lucide-react';
 
 const navItems = [
   { href: '/', label: 'Benchmark 展示', icon: BarChart3 },
-  { href: '/test-cases', label: '测试集管理', icon: Database },
+  { href: '/test-sets', label: '测试集', icon: FolderOpen },
   { href: '/agents', label: 'Agent 管理', icon: Users },
   { href: '/models', label: '模型管理', icon: Brain },
   { href: '/evaluators', label: '评估器管理', icon: Settings },

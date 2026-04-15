@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getAllBenchmarks,
-  createBenchmark
+  createBenchmark,
+  getTestSetCaseIds
 } from '@/lib/db';
 
 // GET /api/benchmarks - 获取所有 benchmark 配置
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
       name,
       description,
       agent_ids,
+      test_set_id,
       test_case_ids,
       evaluator_id,
       run_config
@@ -45,9 +47,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!test_case_ids || !Array.isArray(test_case_ids) || test_case_ids.length === 0) {
+    if (!test_set_id && (!test_case_ids || !Array.isArray(test_case_ids) || test_case_ids.length === 0)) {
       return NextResponse.json(
-        { error: 'At least one test case is required' },
+        { error: 'Test set is required' },
         { status: 400 }
       );
     }
@@ -59,11 +61,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 如果有 test_set_id，获取其 test_case_ids
+    let finalTestCaseIds = test_case_ids;
+    if (test_set_id && (!test_case_ids || test_case_ids.length === 0)) {
+      finalTestCaseIds = getTestSetCaseIds(test_set_id);
+    }
+
     const benchmark = createBenchmark({
       name,
       description: description || '',
       agent_ids: JSON.stringify(agent_ids),
-      test_case_ids: JSON.stringify(test_case_ids),
+      test_case_ids: JSON.stringify(finalTestCaseIds || []),
+      test_set_id: test_set_id || null,
       evaluator_id: evaluator_id || null,
       run_config: run_config ? JSON.stringify(run_config) : '{}'
     });

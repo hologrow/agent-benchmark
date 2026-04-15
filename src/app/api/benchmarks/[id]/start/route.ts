@@ -5,7 +5,8 @@ import { mkdirSync, createWriteStream } from 'fs';
 import {
   getBenchmarkById,
   createExecution,
-  createResult
+  createResult,
+  getTestSetCaseIds
 } from '@/lib/db';
 
 // POST /api/benchmarks/:id/start - 启动 benchmark 执行
@@ -36,7 +37,15 @@ export async function POST(
 
     // 解析 agent_ids 和 test_case_ids
     const agentIds = JSON.parse(benchmark.agent_ids) as number[];
-    const testCaseIds = JSON.parse(benchmark.test_case_ids) as number[];
+    let testCaseIds: number[] = [];
+
+    // 优先从 test_set_id 获取用例
+    if (benchmark.test_set_id) {
+      testCaseIds = getTestSetCaseIds(benchmark.test_set_id);
+    } else if (benchmark.test_case_ids) {
+      // 向后兼容
+      testCaseIds = JSON.parse(benchmark.test_case_ids) as number[];
+    }
 
     // 为每个 agent × test_case 组合创建结果记录
     for (const agentId of agentIds) {

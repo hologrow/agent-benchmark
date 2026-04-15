@@ -161,25 +161,6 @@ export interface Evaluator {
   updated_at: string;
 }
 
-// TestSet 相关操作
-export interface TestSet {
-  id: number;
-  name: string;
-  description: string;
-  source: 'lark' | 'manual' | null;
-  source_url: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface TestSetItem {
-  id: number;
-  test_set_id: number;
-  test_case_id: number;
-  order_index: number;
-  created_at: string;
-}
-
 export function getAllEvaluators(): Evaluator[] {
   const db = getDatabase();
   return db.prepare('SELECT * FROM evaluators ORDER BY created_at DESC').all() as Evaluator[];
@@ -228,7 +209,6 @@ export interface Benchmark {
   description: string;
   agent_ids: string;
   test_case_ids: string;
-  test_set_id: number | null;
   evaluator_id: number | null;
   run_config: string;
   created_at: string;
@@ -249,8 +229,8 @@ export function createBenchmark(benchmark: Omit<Benchmark, 'id' | 'created_at' |
   const db = getDatabase();
   const now = new Date().toISOString();
   const result = db.prepare(
-    'INSERT INTO benchmarks (name, description, agent_ids, test_case_ids, test_set_id, evaluator_id, run_config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(benchmark.name, benchmark.description, benchmark.agent_ids, benchmark.test_case_ids, benchmark.test_set_id ?? null, benchmark.evaluator_id, benchmark.run_config, now, now);
+    'INSERT INTO benchmarks (name, description, agent_ids, test_case_ids, evaluator_id, run_config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(benchmark.name, benchmark.description, benchmark.agent_ids, benchmark.test_case_ids, benchmark.evaluator_id, benchmark.run_config, now, now);
 
   return getBenchmarkById(result.lastInsertRowid as number)!;
 }
@@ -265,7 +245,6 @@ export function updateBenchmark(id: number, benchmark: Partial<Omit<Benchmark, '
   if (benchmark.description !== undefined) { sets.push('description = ?'); values.push(benchmark.description); }
   if (benchmark.agent_ids !== undefined) { sets.push('agent_ids = ?'); values.push(benchmark.agent_ids); }
   if (benchmark.test_case_ids !== undefined) { sets.push('test_case_ids = ?'); values.push(benchmark.test_case_ids); }
-  if (benchmark.test_set_id !== undefined) { sets.push('test_set_id = ?'); values.push(benchmark.test_set_id); }
   if (benchmark.evaluator_id !== undefined) { sets.push('evaluator_id = ?'); values.push(benchmark.evaluator_id); }
   if (benchmark.run_config !== undefined) { sets.push('run_config = ?'); values.push(benchmark.run_config); }
   sets.push('updated_at = ?');
@@ -667,144 +646,4 @@ export function updateModel(id: number, model: Partial<Omit<Model, 'id' | 'creat
 export function deleteModel(id: number): void {
   const db = getDatabase();
   db.prepare('DELETE FROM models WHERE id = ?').run(id);
-}
-
-// ==================== TestSet 相关操作 ====================
-export * from './testset';
-
-// ==================== Benchmark V2 接口 ====================
-
-// 新的 Benchmark 接口（向后兼容）
-export interface BenchmarkV2 {
-  id: number;
-  name: string;
-  description: string;
-  agent_ids: string;
-  test_set_id: number | null;
-  evaluator_id: number | null;
-  run_config: string;
-  created_at: string;
-  updated_at: string;
-  // 扩展字段
-  test_cases?: TestCase[];
-  test_set?: TestSet;
-}
-
-// 获取 Benchmark 详情（包含测试集信息）
-export function getBenchmarkWithTestSet(id: number): BenchmarkV2 | undefined {
-  const db = getDatabase();
-  const benchmark = db.prepare('SELECT * FROM benchmarks WHERE id = ?').get(id) as Benchmark | undefined;
-
-  if (!benchmark) return undefined;
-
-  let testSet: TestSet | undefined;
-  let testCases: TestCase[] = [];
-
-  if (benchmark.test_set_id) {
-    testSet = db.prepare('SELECT * FROM test_sets WHERE id = ?').get(benchmark.test_set_id) as TestSet | undefined;
-    testCases = db.prepare(`
-      SELECT tc.* FROM test_cases tc
-      JOIN test_set_items tsi ON tc.id = tsi.test_case_id
-      WHERE tsi.test_set_id = ?
-      ORDER BY tsi.order_index ASC
-    `).all(benchmark.test_set_id) as TestCase[];
-  } else if (benchmark.test_case_ids) {
-    // 向后兼容：从 test_case_ids 获取
-    try {
-      const ids = JSON.parse(benchmark.test_case_ids) as number[];
-      if (ids.length > 0) {
-        const placeholders = ids.map(() => '?').join(',');
-        testCases = db.prepare(`SELECT * FROM test_cases WHERE id IN (${placeholders})`).all(...ids) as TestCase[];
-      }
-    } catch {
-      // 解析失败，忽略
-    }
-  }
-
-  return {
-    ...benchmark,
-    test_set_id: benchmark.test_set_id || null,
-    test_set: testSet,
-    test_cases: testCases,
-  };
-}
-
-// 创建 Benchmark（使用 test_set_id）
-export function createBenchmarkV2(
-  benchmark: Omit<BenchmarkV2, 'id' | 'created_at' | 'updated_at' | 'test_cases' | 'test_set'>
-): BenchmarkV2 {
-  const db = getDatabase();
-  const now = new Date().toISOString();
-
-  // 保持向后兼容：同时设置 test_case_ids
-  let testCaseIds = '[]';
-  if (benchmark.test_set_id) {
-    const { getTestSetCaseIds } = require('./testset');
-    const ids = getTestSetCaseIds(benchmark.test_set_id);
-    testCaseIds = JSON.stringify(ids);
-  }
-
-  const result = db.prepare(
-    'INSERT INTO benchmarks (name, description, agent_ids, test_set_id, test_case_ids, evaluator_id, run_config, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(
-    benchmark.name,
-    benchmark.description,
-    benchmark.agent_ids,
-    benchmark.test_set_id,
-    testCaseIds,
-    benchmark.evaluator_id,
-    benchmark.run_config,
-    now,
-    now
-  );
-
-  return getBenchmarkWithTestSet(result.lastInsertRowid as number)!;
-}
-
-// 更新 Benchmark
-export function updateBenchmarkV2(
-  id: number,
-  benchmark: Partial<Omit<BenchmarkV2, 'id' | 'created_at' | 'updated_at' | 'test_cases' | 'test_set'>>
-): BenchmarkV2 {
-  const db = getDatabase();
-  const now = new Date().toISOString();
-  const sets: string[] = [];
-  const values: unknown[] = [];
-
-  if (benchmark.name !== undefined) { sets.push('name = ?'); values.push(benchmark.name); }
-  if (benchmark.description !== undefined) { sets.push('description = ?'); values.push(benchmark.description); }
-  if (benchmark.agent_ids !== undefined) { sets.push('agent_ids = ?'); values.push(benchmark.agent_ids); }
-  if (benchmark.evaluator_id !== undefined) { sets.push('evaluator_id = ?'); values.push(benchmark.evaluator_id); }
-  if (benchmark.run_config !== undefined) { sets.push('run_config = ?'); values.push(benchmark.run_config); }
-
-  if (benchmark.test_set_id !== undefined) {
-    sets.push('test_set_id = ?');
-    values.push(benchmark.test_set_id);
-
-    // 同时更新 test_case_ids 以保持向后兼容
-    if (benchmark.test_set_id) {
-      const { getTestSetCaseIds } = require('./testset');
-      const ids = getTestSetCaseIds(benchmark.test_set_id);
-      sets.push('test_case_ids = ?');
-      values.push(JSON.stringify(ids));
-    } else {
-      sets.push('test_case_ids = ?');
-      values.push('[]');
-    }
-  }
-
-  sets.push('updated_at = ?');
-  values.push(now);
-  values.push(id);
-
-  db.prepare(`UPDATE benchmarks SET ${sets.join(', ')} WHERE id = ?`).run(...values);
-  return getBenchmarkWithTestSet(id)!;
-}
-
-// 获取所有 Benchmark（包含测试集信息）
-export function getAllBenchmarksV2(): BenchmarkV2[] {
-  const db = getDatabase();
-  const benchmarks = db.prepare('SELECT * FROM benchmarks ORDER BY created_at DESC').all() as Benchmark[];
-
-  return benchmarks.map(b => getBenchmarkWithTestSet(b.id)!).filter(Boolean);
 }
