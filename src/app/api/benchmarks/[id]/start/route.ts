@@ -6,7 +6,8 @@ import {
   getBenchmarkById,
   createExecution,
   createResult,
-  getTestSetCaseIds
+  getTestSetCaseIds,
+  updateExecution
 } from '@/lib/db';
 
 // POST /api/benchmarks/:id/start - 启动 benchmark 执行
@@ -87,6 +88,12 @@ export async function POST(
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe']
     });
+
+    // 保存进程 ID 到数据库
+    if (pythonProcess.pid) {
+      updateExecution(execution.id, { pid: pythonProcess.pid });
+      console.log(`[Benchmark ${execution.id}] 进程 PID: ${pythonProcess.pid}`);
+    }
 
     // 将 stdout 同时输出到控制台和日志文件
     pythonProcess.stdout?.on('data', (data) => {

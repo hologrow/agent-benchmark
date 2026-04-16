@@ -108,7 +108,7 @@ const testSetFormSchema = z.object({
 
 const testCaseFormSchema = z.object({
   input: z.string().min(1, '输入不能为空'),
-  expected_output: z.string().optional(),
+  expected_output: z.string().min(1, '期望输出不能为空'),
   key_points: z.string().optional(),
   forbidden_points: z.string().optional(),
   category: z.string().optional(),
@@ -1007,35 +1007,19 @@ export default function TestSetsPage() {
               onSubmit={testCaseForm.handleSubmit(onSaveTestCase)}
               className="space-y-4"
             >
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={testCaseForm.control}
-                  name="category"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>分类</FormLabel>
-                      <FormControl>
-                        <Input placeholder="如：数据分析" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={testCaseForm.control}
-                  name="expected_output"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>期望输出</FormLabel>
-                      <FormControl>
-                        <Input placeholder="期望的回复内容" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              <FormField
+                control={testCaseForm.control}
+                name="category"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>分类</FormLabel>
+                    <FormControl>
+                      <Input placeholder="如：数据分析" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <FormField
                 control={testCaseForm.control}
@@ -1048,6 +1032,26 @@ export default function TestSetsPage() {
                     <FormControl>
                       <Textarea
                         placeholder="用户输入/问题"
+                        className="min-h-[80px]"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={testCaseForm.control}
+                name="expected_output"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      期望输出 <span className="text-destructive">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="期望的回复内容"
                         className="min-h-[80px]"
                         {...field}
                       />

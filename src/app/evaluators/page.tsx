@@ -90,6 +90,7 @@ const defaultConfig = {
 - 测试名称: {{test_case_name}}
 - 输入: {{input}}
 - 期望输出: {{expected_output}}
+- 如何实现: {{how}}
 
 ## 关键测试点
 {{key_points}}
@@ -330,7 +331,7 @@ export default function EvaluatorsPage() {
               配置评估器参数，支持使用变量引用上下文进行动态评估
               <div className="mt-2 text-sm text-muted-foreground">
                 可用变量: {'{'}'{'}agent_name{'}'{'}'}, {'{'}'{'}test_id{'}'{'}'}, {'{'}'{'}input{'}'{'}'}, {'{'}'{'}expected_output{'}'{'}'},
-                {'{'}'{'}actual_output{'}'{'}'}, {'{'}'{'}key_points{'}'{'}'}, {'{'}'{'}forbidden_points{'}'{'}'}
+                {'{'}'{'}actual_output{'}'{'}'}, {'{'}'{'}key_points{'}'{'}'}, {'{'}'{'}forbidden_points{'}'{'}'}, {'{'}'{'}how{'}'{'}'}
               </div>
             </DialogDescription>
           </DialogHeader>
@@ -428,7 +429,7 @@ export default function EvaluatorsPage() {
                           <li><strong>evaluation_prompt</strong>：发送给 LLM 的评估提示词，支持变量替换</li>
                         </ul>
                         <p className="text-xs text-muted-foreground">
-                          可用变量：{'{'}'{'}agent_name{'}'{'}'}, {'{'}'{'}test_id{'}'{'}'}, {'{'}'{'}test_case_name{'}'{'}'}, {'{'}'{'}input{'}'{'}'}, {'{'}'{'}expected_output{'}'{'}'}, {'{'}'{'}actual_output{'}'{'}'}, {'{'}'{'}key_points{'}'{'}'}, {'{'}'{'}forbidden_points{'}'{'}'}, {'{'}'{'}execution_time_ms{'}'{'}'}
+                          可用变量：{'{'}'{'}agent_name{'}'{'}'}, {'{'}'{'}test_id{'}'{'}'}, {'{'}'{'}test_case_name{'}'{'}'}, {'{'}'{'}input{'}'{'}'}, {'{'}'{'}expected_output{'}'{'}'}, {'{'}'{'}actual_output{'}'{'}'}, {'{'}'{'}key_points{'}'{'}'}, {'{'}'{'}forbidden_points{'}'{'}'}, {'{'}'{'}how{'}'{'}'}, {'{'}'{'}execution_time_ms{'}'{'}'}
                         </p>
                       </div>
                     </FormDescription>

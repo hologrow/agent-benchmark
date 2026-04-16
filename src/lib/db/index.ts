@@ -399,6 +399,7 @@ export interface Execution {
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
+  pid: number | null;
 }
 
 export function getExecutionsByBenchmarkId(benchmarkId: number): Execution[] {
@@ -412,7 +413,8 @@ export function getExecutionsByBenchmarkId(benchmarkId: number): Execution[] {
       evaluation_status,
       started_at,
       completed_at,
-      created_at
+      created_at,
+      pid
     FROM benchmark_executions
     WHERE benchmark_id = ?
     ORDER BY created_at DESC`
@@ -430,7 +432,8 @@ export function getExecutionById(id: number): Execution | undefined {
       evaluation_status,
       started_at,
       completed_at,
-      created_at
+      created_at,
+      pid
     FROM benchmark_executions
     WHERE id = ?`
   ).get(id) as Execution | undefined;
@@ -442,23 +445,25 @@ export function createExecution(execution: {
   status: string;
   started_at: string | null;
   completed_at: null;
+  pid?: number | null;
 }): Execution {
   const db = getDatabase();
   const result = db.prepare(
-    `INSERT INTO benchmark_executions (benchmark_id, name, status, started_at, completed_at)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO benchmark_executions (benchmark_id, name, status, started_at, completed_at, pid)
+     VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
     execution.benchmark_id,
     execution.name,
     execution.status,
     execution.started_at,
-    execution.completed_at
+    execution.completed_at,
+    execution.pid ?? null
   );
 
   return getExecutionById(result.lastInsertRowid as number)!;
 }
 
-export function updateExecution(id: number, execution: Partial<Pick<Execution, 'status' | 'started_at' | 'completed_at' | 'evaluation_status'>>): Execution {
+export function updateExecution(id: number, execution: Partial<Pick<Execution, 'status' | 'started_at' | 'completed_at' | 'evaluation_status' | 'pid'>>): Execution {
   const db = getDatabase();
   const sets: string[] = [];
   const values: unknown[] = [];
@@ -467,6 +472,7 @@ export function updateExecution(id: number, execution: Partial<Pick<Execution, '
   if (execution.started_at !== undefined) { sets.push('started_at = ?'); values.push(execution.started_at); }
   if (execution.completed_at !== undefined) { sets.push('completed_at = ?'); values.push(execution.completed_at); }
   if (execution.evaluation_status !== undefined) { sets.push('evaluation_status = ?'); values.push(execution.evaluation_status); }
+  if (execution.pid !== undefined) { sets.push('pid = ?'); values.push(execution.pid); }
   values.push(id);
 
   db.prepare(`UPDATE benchmark_executions SET ${sets.join(', ')} WHERE id = ?`).run(...values);

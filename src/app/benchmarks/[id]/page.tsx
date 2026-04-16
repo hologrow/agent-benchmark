@@ -33,6 +33,13 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Benchmark {
   id: number;
@@ -347,6 +354,11 @@ export default function BenchmarkDetailsPage() {
 }
 
 function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
+  const [selectedResult, setSelectedResult] = useState<BenchmarkResult | null>(
+    null,
+  );
+  const [dialogOpen, setDialogOpen] = useState(false);
+
   const completedCount = execution.results.filter(
     (r) => r.status === "completed",
   ).length;
@@ -385,6 +397,76 @@ function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
         {labels[status] || status}
       </Badge>
     );
+  };
+
+  const parseJson = (str: string | null) => {
+    if (!str) return [];
+    try {
+      return JSON.parse(str);
+    } catch {
+      return str
+        .split(/[\n,;]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  };
+
+  // 解析实际输出，分离主输出和执行过程
+  const parseActualOutput = (actualOutput: string | null) => {
+    if (!actualOutput) return { mainOutput: '', executionProcess: '' };
+
+    try {
+      // 尝试解析为 JSON（Agent 执行结果格式）
+      const parsed = JSON.parse(actualOutput);
+      if (parsed.output !== undefined) {
+        const mainOutput = typeof parsed.output === 'string' ? parsed.output : JSON.stringify(parsed.output, null, 2);
+        const executionProcess = [
+          parsed.tool_calls_made !== undefined && `工具调用次数: ${parsed.tool_calls_made}`,
+          parsed.duration_seconds !== undefined && `执行时长: ${parsed.duration_seconds}s`,
+          parsed.error && `错误: ${parsed.error}`,
+          parsed.status && `状态: ${parsed.status}`,
+        ].filter(Boolean).join('\n');
+        return { mainOutput, executionProcess };
+      }
+    } catch {
+      // 不是 JSON 格式，继续处理
+    }
+
+    // 使用 [done] end_turn 作为分隔符：前面的内容是执行结果，后面是执行过程
+    const doneMarker = '[done] end_turn';
+    const doneIndex = actualOutput.indexOf(doneMarker);
+
+    if (doneIndex !== -1) {
+      // 找到分隔符，前面是执行结果，后面（包含分隔符）是执行过程
+      const mainOutput = actualOutput.substring(0, doneIndex).trim();
+      const executionProcess = actualOutput.substring(doneIndex).trim();
+      return { mainOutput, executionProcess };
+    }
+
+    // 如果没有找到 [done] end_turn，尝试使用其他标记分隔
+    const processMarkers = ['[tool]', '[thinking]', '--- stderr ---', 'Traceback (most recent call last):'];
+    let splitIndex = actualOutput.length;
+
+    for (const marker of processMarkers) {
+      const idx = actualOutput.indexOf(marker);
+      if (idx !== -1 && idx < splitIndex) {
+        splitIndex = idx;
+      }
+    }
+
+    if (splitIndex < actualOutput.length) {
+      return {
+        mainOutput: actualOutput.substring(0, splitIndex).trim(),
+        executionProcess: actualOutput.substring(splitIndex).trim(),
+      };
+    }
+
+    return { mainOutput: actualOutput, executionProcess: '' };
+  };
+
+  const openResultDialog = (result: BenchmarkResult) => {
+    setSelectedResult(result);
+    setDialogOpen(true);
   };
 
   return (
@@ -480,7 +562,11 @@ function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
                 )}
               </TableCell>
               <TableCell className="text-right">
-                <Button size="sm" variant="outline" disabled>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openResultDialog(result)}
+                >
                   <FileText className="h-4 w-4 mr-1" />
                   查看
                 </Button>
@@ -489,6 +575,170 @@ function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
           ))}
         </TableBody>
       </Table>
+
+      {/* 结果详情对话框 */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedResult?.agent_name} - {selectedResult?.test_id}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedResult?.test_case_name}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedResult && (
+            <div className="space-y-4 mt-4">
+              {/* 基本信息 */}
+              <div className="flex items-center gap-4 text-sm">
+                <span>状态: {getStatusBadge(selectedResult.status)}</span>
+                <span>
+                  执行时间: {formatDuration(selectedResult.execution_time_ms)}
+                </span>
+                {selectedResult.score !== null && (
+                  <span
+                    className={`font-bold ${
+                      selectedResult.score >= 80
+                        ? "text-green-600"
+                        : selectedResult.score >= 60
+                          ? "text-yellow-600"
+                          : "text-red-600"
+                    }`}
+                  >
+                    评分: {selectedResult.score?.toFixed(1)}
+                  </span>
+                )}
+              </div>
+
+              {/* 输入（单行） */}
+              <div>
+                <h4 className="font-semibold mb-1 text-sm">输入</h4>
+                <div className="bg-muted px-3 py-2 rounded-md text-sm truncate" title={selectedResult.test_input}>
+                  {selectedResult.test_input || "无"}
+                </div>
+              </div>
+
+              {/* 期望输出和实际输出（左右对比） */}
+              {(() => {
+                const { mainOutput, executionProcess } = parseActualOutput(selectedResult.actual_output);
+                return (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="font-semibold mb-1 text-sm">期望输出</h4>
+                        <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-[400px] overflow-y-auto border border-dashed border-gray-300">
+                          {selectedResult.expected_output || "无"}
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className="font-semibold mb-1 text-sm">实际输出</h4>
+                        <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-[400px] overflow-y-auto border border-green-200">
+                          {mainOutput || "无输出"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 执行过程（放在最下方单独展示） */}
+                    {executionProcess && (
+                      <div>
+                        <h4 className="font-semibold mb-1 text-sm text-gray-500">执行过程</h4>
+                        <div className="bg-gray-50 p-3 rounded-md text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto text-gray-600 font-mono">
+                          {executionProcess}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+
+              {/* 错误信息 */}
+              {selectedResult.error_message && (
+                <div>
+                  <h4 className="font-semibold mb-2 text-red-600">执行错误</h4>
+                  <div className="bg-red-50 border border-red-200 p-3 rounded-md text-sm text-red-700 whitespace-pre-wrap">
+                    {selectedResult.error_message}
+                  </div>
+                </div>
+              )}
+
+              {/* 评估错误信息 */}
+              {selectedResult.evaluation_error && (
+                <div>
+                  <h4 className="font-semibold mb-2 text-orange-600">
+                    评估错误
+                  </h4>
+                  <div className="bg-orange-50 border border-orange-200 p-3 rounded-md text-sm text-orange-700 whitespace-pre-wrap">
+                    {selectedResult.evaluation_error}
+                  </div>
+                </div>
+              )}
+
+              {/* 关键测试点和禁止点 */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="font-semibold mb-2">关键测试点</h4>
+                  <ul className="space-y-1">
+                    {parseJson(selectedResult.key_points).map(
+                      (point: string, idx: number) => {
+                        const metPoints = parseJson(
+                          selectedResult.key_points_met,
+                        );
+                        const isMet = metPoints.includes(point);
+                        return (
+                          <li
+                            key={idx}
+                            className={`text-sm flex items-center gap-2 ${
+                              isMet ? "text-green-600" : "text-red-600"
+                            }`}
+                          >
+                            <span>{isMet ? "✓" : "✗"}</span>
+                            {point}
+                          </li>
+                        );
+                      },
+                    )}
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-2">禁止点</h4>
+                  <ul className="space-y-1">
+                    {parseJson(selectedResult.forbidden_points).map(
+                      (point: string, idx: number) => {
+                        const violatedPoints = parseJson(
+                          selectedResult.forbidden_points_violated,
+                        );
+                        const isViolated = violatedPoints.includes(point);
+                        return (
+                          <li
+                            key={idx}
+                            className={`text-sm flex items-center gap-2 ${
+                              isViolated ? "text-red-600" : "text-green-600"
+                            }`}
+                          >
+                            <span>{isViolated ? "✗" : "✓"}</span>
+                            {point}
+                          </li>
+                        );
+                      },
+                    )}
+                  </ul>
+                </div>
+              </div>
+
+              {/* 评估报告 */}
+              {selectedResult.evaluation_report && (
+                <div>
+                  <h4 className="font-semibold mb-2">评估报告</h4>
+                  <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap">
+                    {selectedResult.evaluation_report}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

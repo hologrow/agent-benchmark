@@ -188,7 +188,8 @@ def evaluate_single_result(args: Dict) -> Dict:
             tc.input,
             tc.expected_output,
             tc.key_points,
-            tc.forbidden_points
+            tc.forbidden_points,
+            tc.how
         FROM benchmark_results br
         JOIN agents a ON br.agent_id = a.id
         JOIN test_cases tc ON br.test_case_id = tc.id
@@ -212,6 +213,7 @@ def evaluate_single_result(args: Dict) -> Dict:
         'actual_output': result['actual_output'] or '',
         'key_points': json.dumps(key_points, ensure_ascii=False),
         'forbidden_points': json.dumps(forbidden_points, ensure_ascii=False),
+        'how': result['how'] or '',
         'execution_time_ms': result['execution_time_ms'] or 0,
         **evaluator_config.get('variables', {})
     }
@@ -225,6 +227,7 @@ def evaluate_single_result(args: Dict) -> Dict:
 - 测试名称: {{test_case_name}}
 - 输入: {{input}}
 - 期望输出: {{expected_output}}
+- 如何实现: {{how}}
 
 ## 关键测试点
 {{key_points}}

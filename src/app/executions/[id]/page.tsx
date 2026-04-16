@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -68,6 +68,7 @@ interface Execution {
   created_at: string;
   benchmark_name: string;
   evaluation_status: "pending" | "running" | "completed" | "failed" | null;
+  pid: number | null;
   results: BenchmarkResult[];
 }
 
@@ -85,10 +86,45 @@ export default function ExecutionDetailsPage() {
   );
   const [resultDialogOpen, setResultDialogOpen] = useState(false);
   const [reevaluating, setReevaluating] = useState(false);
+  const [processHealth, setProcessHealth] = useState<{
+    healthy: boolean;
+    processRunning: boolean;
+    message: string;
+  } | null>(null);
+
+  const checkExecutionHealth = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/executions/${executionId}/health`);
+      if (response.ok) {
+        const data = await response.json();
+        setProcessHealth({
+          healthy: data.healthy,
+          processRunning: data.processRunning,
+          message: data.message,
+        });
+        // 如果状态被自动更新了，刷新执行详情
+        if (data.autoUpdated) {
+          fetchExecution();
+        }
+      }
+    } catch (error) {
+      console.error("Error checking execution health:", error);
+    }
+  }, [executionId]);
 
   useEffect(() => {
     fetchExecution();
   }, [executionId]);
+
+  // 当执行状态为 running 时，检查进程健康状态
+  useEffect(() => {
+    if (execution?.status === "running") {
+      checkExecutionHealth();
+      // 每5秒检查一次
+      const interval = setInterval(checkExecutionHealth, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [execution?.status, execution?.pid, checkExecutionHealth]);
 
   const fetchExecution = async () => {
     try {
@@ -309,6 +345,12 @@ export default function ExecutionDetailsPage() {
               ? getStatusBadge(execution.evaluation_status)
               : "-"}
           </span>
+          {execution.status === "running" && processHealth && (
+            <span className={processHealth.healthy ? "text-green-600" : "text-red-600"}>
+              进程: {processHealth.processRunning ? "运行中" : "已停止"}
+              {!processHealth.healthy && " (异常)"}
+            </span>
+          )}
           <span>总任务数: {execution.results.length}</span>
           <span>成功: {completedCount}</span>
           <span>失败: {failedCount}</span>

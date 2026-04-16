@@ -1,5 +1,7 @@
 # Benchmark Runner
 
+![workflow](./workflow.png)
+
 AI Agent Benchmark 平台，用于执行、评估和管理 AI Agent 的测试用例。
 
 ## 功能特性
