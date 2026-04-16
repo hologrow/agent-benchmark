@@ -4,6 +4,8 @@ on:
   push:
     branches: ['**']
 
+
+
 permissions:
   contents: read
 
@@ -11,7 +13,7 @@ jobs:
   Test:
     name: Test
     runs-on: ubuntu-latest
-    environment: production
+    environment: development
 
     steps:
       - name: Checkout
