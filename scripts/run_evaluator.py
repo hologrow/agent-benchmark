@@ -204,6 +204,13 @@ def evaluate_single_result(args: Dict) -> Dict:
     key_points = json.loads(result['key_points']) if result['key_points'] else []
     forbidden_points = json.loads(result['forbidden_points']) if result['forbidden_points'] else []
 
+    # 获取执行步骤和答案（新增字段，兼容旧数据）
+    execution_steps = result['execution_steps'] if result['execution_steps'] else ''
+    execution_answer = result['execution_answer'] if result['execution_answer'] else ''
+    # 如果没有解析后的字段，使用原始输出作为答案
+    if not execution_answer and result['actual_output']:
+        execution_answer = result['actual_output']
+
     context = {
         'agent_name': result['agent_name'],
         'test_id': result['test_id'],
@@ -211,6 +218,8 @@ def evaluate_single_result(args: Dict) -> Dict:
         'input': result['input'],
         'expected_output': result['expected_output'] or '',
         'actual_output': result['actual_output'] or '',
+        'execution_steps': execution_steps,
+        'execution_answer': execution_answer,
         'key_points': json.dumps(key_points, ensure_ascii=False),
         'forbidden_points': json.dumps(forbidden_points, ensure_ascii=False),
         'how': result['how'] or '',
@@ -238,11 +247,22 @@ def evaluate_single_result(args: Dict) -> Dict:
 ## Agent 实际输出
 {{actual_output}}
 
+## Agent 执行答案（解析后的最终答案，推荐优先使用）
+{{execution_answer}}
+
+## Agent 执行过程（执行步骤和中间过程）
+{{execution_steps}}
+
 ## 评估要求
-1. 检查实际输出是否满足所有关键测试点
-2. 检查实际输出是否触犯了任何禁止点
+1. 检查实际输出或执行答案是否满足所有关键测试点
+2. 检查实际输出或执行答案是否触犯了任何禁止点
 3. 根据满足程度和违规情况打分（0-100）
 4. 生成详细的评估报告
+
+## 可用变量说明
+- {{actual_output}}: Agent 的原始完整输出
+- {{execution_answer}}: 解析后的最终答案（推荐用于评估内容正确性）
+- {{execution_steps}}: 执行步骤和工具调用过程（用于评估执行路径）
 
 请以 JSON 格式返回评估结果：
 {

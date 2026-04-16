@@ -26,10 +26,6 @@ import {
   Play,
   FileText,
   AlertCircle,
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
   RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -70,6 +66,8 @@ interface BenchmarkResult {
   test_case_id: number;
   status: "pending" | "running" | "completed" | "failed" | "timeout";
   actual_output: string | null;
+  execution_steps: string | null; // 解析后的执行步骤
+  execution_answer: string | null; // 解析后的执行答案
   output_file: string | null;
   execution_time_ms: number | null;
   error_message: string | null;
@@ -85,6 +83,7 @@ interface BenchmarkResult {
   forbidden_points: string;
   score: number | null;
   evaluation_report: string | null;
+  evaluation_error: string | null;
   key_points_met: string | null;
   forbidden_points_violated: string | null;
 }
@@ -162,7 +161,8 @@ export default function BenchmarkDetailsPage() {
       if (response.ok) {
         const data = await response.json();
         toast.success("已开始新执行");
-        router.push(`/executions/${data.executionId}`);
+        // 刷新页面以显示新的执行记录
+        fetchBenchmark();
       } else {
         const error = await response.json();
         toast.error(error.error || "启动失败");
@@ -204,40 +204,6 @@ export default function BenchmarkDetailsPage() {
         {labels[status] || status}
       </Badge>
     );
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "completed":
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
-      case "failed":
-      case "error":
-        return <XCircle className="h-5 w-5 text-red-500" />;
-      case "timeout":
-        return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
-      case "running":
-        return <Loader2 className="h-5 w-5 animate-spin" />;
-      default:
-        return <Clock className="h-5 w-5 text-muted-foreground" />;
-    }
-  };
-
-  const formatDuration = (ms: number | null) => {
-    if (!ms) return "-";
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(2)}s`;
-  };
-
-  const formatJson = (str: string | null) => {
-    if (!str) return [];
-    try {
-      return JSON.parse(str);
-    } catch {
-      return str
-        .split(/[\n,;]/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-    }
   };
 
   if (loading) {
@@ -337,7 +303,10 @@ export default function BenchmarkDetailsPage() {
                   className="mt-0"
                 >
                   {selectedExecution?.id === execution.id ? (
-                    <ExecutionDetails execution={selectedExecution} />
+                    <ExecutionDetails
+                      execution={selectedExecution}
+                      onReevaluate={fetchBenchmark}
+                    />
                   ) : (
                     <div className="flex items-center justify-center py-12">
                       <Loader2 className="h-8 w-8 animate-spin" />
@@ -353,11 +322,35 @@ export default function BenchmarkDetailsPage() {
   );
 }
 
-function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
+function ExecutionDetails({ execution, onReevaluate }: { execution: ExecutionWithDetails; onReevaluate?: () => void }) {
   const [selectedResult, setSelectedResult] = useState<BenchmarkResult | null>(
     null,
   );
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [reevaluating, setReevaluating] = useState(false);
+
+  const handleReevaluate = async () => {
+    if (!onReevaluate) return;
+    setReevaluating(true);
+    try {
+      const response = await fetch(`/api/executions/${execution.id}/evaluate`, {
+        method: "POST",
+      });
+
+      if (response.ok) {
+        toast.success("评估任务已启动");
+        onReevaluate();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "启动评估失败");
+      }
+    } catch (error) {
+      console.error("Error starting evaluation:", error);
+      toast.error("启动评估失败");
+    } finally {
+      setReevaluating(false);
+    }
+  };
 
   const completedCount = execution.results.filter(
     (r) => r.status === "completed",
@@ -412,57 +405,6 @@ function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
   };
 
   // 解析实际输出，分离主输出和执行过程
-  const parseActualOutput = (actualOutput: string | null) => {
-    if (!actualOutput) return { mainOutput: '', executionProcess: '' };
-
-    try {
-      // 尝试解析为 JSON（Agent 执行结果格式）
-      const parsed = JSON.parse(actualOutput);
-      if (parsed.output !== undefined) {
-        const mainOutput = typeof parsed.output === 'string' ? parsed.output : JSON.stringify(parsed.output, null, 2);
-        const executionProcess = [
-          parsed.tool_calls_made !== undefined && `工具调用次数: ${parsed.tool_calls_made}`,
-          parsed.duration_seconds !== undefined && `执行时长: ${parsed.duration_seconds}s`,
-          parsed.error && `错误: ${parsed.error}`,
-          parsed.status && `状态: ${parsed.status}`,
-        ].filter(Boolean).join('\n');
-        return { mainOutput, executionProcess };
-      }
-    } catch {
-      // 不是 JSON 格式，继续处理
-    }
-
-    // 使用 [done] end_turn 作为分隔符：前面的内容是执行结果，后面是执行过程
-    const doneMarker = '[done] end_turn';
-    const doneIndex = actualOutput.indexOf(doneMarker);
-
-    if (doneIndex !== -1) {
-      // 找到分隔符，前面是执行结果，后面（包含分隔符）是执行过程
-      const mainOutput = actualOutput.substring(0, doneIndex).trim();
-      const executionProcess = actualOutput.substring(doneIndex).trim();
-      return { mainOutput, executionProcess };
-    }
-
-    // 如果没有找到 [done] end_turn，尝试使用其他标记分隔
-    const processMarkers = ['[tool]', '[thinking]', '--- stderr ---', 'Traceback (most recent call last):'];
-    let splitIndex = actualOutput.length;
-
-    for (const marker of processMarkers) {
-      const idx = actualOutput.indexOf(marker);
-      if (idx !== -1 && idx < splitIndex) {
-        splitIndex = idx;
-      }
-    }
-
-    if (splitIndex < actualOutput.length) {
-      return {
-        mainOutput: actualOutput.substring(0, splitIndex).trim(),
-        executionProcess: actualOutput.substring(splitIndex).trim(),
-      };
-    }
-
-    return { mainOutput: actualOutput, executionProcess: '' };
-  };
 
   const openResultDialog = (result: BenchmarkResult) => {
     setSelectedResult(result);
@@ -471,15 +413,16 @@ function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">总任务数</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{execution.results.length}</div>
-          </CardContent>
-        </Card>
+      <div className="flex items-center justify-between">
+        <div className="grid grid-cols-4 gap-4 flex-1">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">总任务数</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{execution.results.length}</div>
+            </CardContent>
+          </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-green-600">
@@ -519,6 +462,28 @@ function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
             </div>
           </CardContent>
         </Card>
+        </div>
+        {execution.status === "completed" && onReevaluate && (
+          <div className="flex items-center">
+            <Button
+              variant="outline"
+              onClick={handleReevaluate}
+              disabled={reevaluating}
+            >
+              {reevaluating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  评估中...
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 mr-2" />
+                  重新评估
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </div>
 
       <Table>
@@ -619,38 +584,31 @@ function ExecutionDetails({ execution }: { execution: ExecutionWithDetails }) {
                 </div>
               </div>
 
-              {/* 期望输出和实际输出（左右对比） */}
-              {(() => {
-                const { mainOutput, executionProcess } = parseActualOutput(selectedResult.actual_output);
-                return (
-                  <>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <h4 className="font-semibold mb-1 text-sm">期望输出</h4>
-                        <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-[400px] overflow-y-auto border border-dashed border-gray-300">
-                          {selectedResult.expected_output || "无"}
-                        </div>
-                      </div>
-                      <div>
-                        <h4 className="font-semibold mb-1 text-sm">实际输出</h4>
-                        <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-[400px] overflow-y-auto border border-green-200">
-                          {mainOutput || "无输出"}
-                        </div>
-                      </div>
-                    </div>
+              {/* 执行答案和期望输出（左右对比） */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="font-semibold mb-1 text-sm">期望输出</h4>
+                  <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-[400px] overflow-y-auto border border-dashed border-gray-300">
+                    {selectedResult.expected_output || "无"}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-semibold mb-1 text-sm">执行答案</h4>
+                  <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-[400px] overflow-y-auto border border-green-200">
+                    {selectedResult.execution_answer || selectedResult.actual_output || "无输出"}
+                  </div>
+                </div>
+              </div>
 
-                    {/* 执行过程（放在最下方单独展示） */}
-                    {executionProcess && (
-                      <div>
-                        <h4 className="font-semibold mb-1 text-sm text-gray-500">执行过程</h4>
-                        <div className="bg-gray-50 p-3 rounded-md text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto text-gray-600 font-mono">
-                          {executionProcess}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
+              {/* 执行步骤（如果有） */}
+              {selectedResult.execution_steps && (
+                <div>
+                  <h4 className="font-semibold mb-1 text-sm text-gray-500">执行步骤</h4>
+                  <div className="bg-gray-50 p-3 rounded-md text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto text-gray-600 font-mono">
+                    {selectedResult.execution_steps}
+                  </div>
+                </div>
+              )}
 
               {/* 错误信息 */}
               {selectedResult.error_message && (

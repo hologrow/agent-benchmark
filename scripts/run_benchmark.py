@@ -19,6 +19,9 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
+# 导入输出解析器
+from output_parser import parse_agent_output
+
 # 数据库路径
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'benchmark.db')
 RESULTS_DIR = Path(os.path.dirname(os.path.dirname(__file__))) / 'results'
@@ -222,12 +225,17 @@ def run_single_test(args: Dict) -> Dict:
         actual_output = ''.join(output_lines)
         status = 'completed' if process.returncode == 0 else 'failed'
 
+        # 解析输出，分离执行步骤和答案
+        parsed = parse_agent_output(actual_output)
+        execution_steps = parsed['execution_steps']
+        execution_answer = parsed['execution_answer']
+
         # 更新结果
         cursor.execute(
             '''UPDATE benchmark_results
-               SET status = ?, actual_output = ?, output_file = ?, execution_time_ms = ?, completed_at = ?
+               SET status = ?, actual_output = ?, execution_steps = ?, execution_answer = ?, output_file = ?, execution_time_ms = ?, completed_at = ?
                WHERE id = ?''',
-            (status, actual_output, str(output_file), execution_time_ms, datetime.now().isoformat(), result_id)
+            (status, actual_output, execution_steps, execution_answer, str(output_file), execution_time_ms, datetime.now().isoformat(), result_id)
         )
         conn.commit()
 

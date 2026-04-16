@@ -73,7 +73,9 @@ CREATE TABLE IF NOT EXISTS benchmark_results (
     agent_id INTEGER NOT NULL,
     test_case_id INTEGER NOT NULL,
     status TEXT DEFAULT 'pending', -- pending, running, completed, failed, timeout
-    actual_output TEXT, -- Agent 实际输出
+    actual_output TEXT, -- Agent 实际输出（原始完整输出）
+    execution_steps TEXT, -- 解析后的执行步骤（[client] 和 [tool] 相关内容）
+    execution_answer TEXT, -- 解析后的执行答案（最后一个 [thinking] 后的内容）
     output_file TEXT, -- 输出文件路径
     execution_time_ms INTEGER,
     error_message TEXT,

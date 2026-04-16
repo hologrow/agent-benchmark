@@ -43,12 +43,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Play, Loader2, PlayCircle, History, Trash2, Pencil, FolderOpen } from "lucide-react";
+import {
+  Plus,
+  Play,
+  Loader2,
+  PlayCircle,
+  History,
+  Trash2,
+  Pencil,
+  FolderOpen,
+} from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { JsonEditor, parseFlexibleJson } from "@/components/json-editor";
 
 interface Agent {
   id: number;
@@ -96,8 +106,17 @@ const formSchema = z.object({
   agent_ids: z.array(z.number()).min(1, "至少选择一个 Agent"),
   test_set_id: z.number().min(1, "请选择测试集"),
   evaluator_id: z.number().min(1, "请选择评估器"),
-  run_config: z.string().optional(),
+  run_config: z.string().optional(), // 存储为字符串用于显示
 });
+
+// 运行配置对象类型
+interface RunConfig {
+  prompt_template?: string;
+  use_session?: boolean;
+  max_workers?: number;
+  variables?: Record<string, string>;
+  [key: string]: unknown;
+}
 
 type FormData = z.infer<typeof formSchema>;
 
@@ -119,9 +138,13 @@ export default function BenchmarksPage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [benchmarkToDelete, setBenchmarkToDelete] = useState<Benchmark | null>(null);
+  const [benchmarkToDelete, setBenchmarkToDelete] = useState<Benchmark | null>(
+    null,
+  );
   const [deleting, setDeleting] = useState(false);
-  const [editingBenchmark, setEditingBenchmark] = useState<Benchmark | null>(null);
+  const [editingBenchmark, setEditingBenchmark] = useState<Benchmark | null>(
+    null,
+  );
   const router = useRouter();
   const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
 
@@ -165,7 +188,7 @@ export default function BenchmarksPage() {
             ...ts,
             test_case_count: detailData.testSet?.test_cases?.length || 0,
           };
-        })
+        }),
       );
 
       setBenchmarks(benchmarksData.benchmarks || []);
@@ -182,13 +205,15 @@ export default function BenchmarksPage() {
 
   const onSubmit = async (values: FormData) => {
     try {
+      // 解析运行配置
+      let runConfigObj: RunConfig = {};
       if (values.run_config) {
-        try {
-          JSON.parse(values.run_config);
-        } catch {
-          toast.error("运行配置必须是有效的 JSON 格式");
+        const result = parseFlexibleJson(values.run_config);
+        if (!result.success) {
+          toast.error("运行配置格式错误: " + result.error);
           return;
         }
+        runConfigObj = (result.value as RunConfig) || {};
       }
 
       const isEditing = editingBenchmark !== null;
@@ -202,7 +227,7 @@ export default function BenchmarksPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...values,
-          run_config: values.run_config || "{}",
+          run_config: runConfigObj, // 发送对象，让后端 JSON.stringify
         }),
       });
 
@@ -247,7 +272,8 @@ export default function BenchmarksPage() {
     if (!stats) return <Badge variant="secondary">未执行</Badge>;
     if (stats.running > 0) return <Badge variant="default">运行中</Badge>;
     if (stats.failed > 0) return <Badge variant="destructive">有失败</Badge>;
-    if (stats.completed === stats.total) return <Badge variant="default">已完成</Badge>;
+    if (stats.completed === stats.total)
+      return <Badge variant="default">已完成</Badge>;
     return <Badge variant="secondary">执行中</Badge>;
   };
 
@@ -255,7 +281,7 @@ export default function BenchmarksPage() {
     setSelectedAgents((prev) =>
       prev.includes(agentId)
         ? prev.filter((id) => id !== agentId)
-        : [...prev, agentId]
+        : [...prev, agentId],
     );
   };
 
@@ -365,7 +391,9 @@ export default function BenchmarksPage() {
       <Card>
         <CardHeader>
           <CardTitle>Benchmark 列表</CardTitle>
-          <CardDescription>共 {benchmarks.length} 个 Benchmark 测试计划</CardDescription>
+          <CardDescription>
+            共 {benchmarks.length} 个 Benchmark 测试计划
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -399,29 +427,40 @@ export default function BenchmarksPage() {
               <TableBody>
                 {benchmarks.map((benchmark) => (
                   <TableRow key={benchmark.id}>
-                    <TableCell className="font-medium">{benchmark.name}</TableCell>
-                    <TableCell>{getStatusBadge(benchmark.latestStats)}</TableCell>
+                    <TableCell className="font-medium">
+                      {benchmark.name}
+                    </TableCell>
+                    <TableCell>
+                      {getStatusBadge(benchmark.latestStats)}
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <FolderOpen className="h-4 w-4 text-muted-foreground" />
                         <div>
-                          <div className="font-medium">{getTestSetName(benchmark.test_set_id)}</div>
+                          <div className="font-medium">
+                            {getTestSetName(benchmark.test_set_id)}
+                          </div>
                           <div className="text-xs text-muted-foreground">
                             {getTestSetCount(benchmark.test_set_id)} 个用例
                           </div>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{JSON.parse(benchmark.agent_ids).length}</TableCell>
+                    <TableCell>
+                      {JSON.parse(benchmark.agent_ids).length}
+                    </TableCell>
                     <TableCell>
                       {benchmark.latestStats ? (
                         <div className="text-sm">
-                          <span className="text-green-600">{benchmark.latestStats.completed}</span>
+                          <span className="text-green-600">
+                            {benchmark.latestStats.completed}
+                          </span>
                           <span className="text-muted-foreground"> / </span>
                           <span>{benchmark.latestStats.total}</span>
                           {benchmark.latestStats.avgScore !== null && (
                             <span className="ml-2 text-muted-foreground">
-                              (均分: {benchmark.latestStats.avgScore.toFixed(1)})
+                              (均分: {benchmark.latestStats.avgScore.toFixed(1)}
+                              )
                             </span>
                           )}
                         </div>
@@ -442,7 +481,9 @@ export default function BenchmarksPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => router.push(`/benchmarks/${benchmark.id}`)}
+                          onClick={() =>
+                            router.push(`/benchmarks/${benchmark.id}`)
+                          }
                         >
                           <History className="h-4 w-4 mr-1" />
                           执行记录
@@ -472,10 +513,13 @@ export default function BenchmarksPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={(open) => {
-        setDialogOpen(open);
-        if (!open) setEditingBenchmark(null);
-      }}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) setEditingBenchmark(null);
+        }}
+      >
         <DialogContent className="!max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -532,11 +576,13 @@ export default function BenchmarksPage() {
                         }`}
                         onClick={() => toggleAgent(agent.id)}
                       >
-                        <span className={`h-4 w-4 border rounded ${
-                          selectedAgents.includes(agent.id)
-                            ? "bg-primary border-primary"
-                            : "border-muted-foreground"
-                        }`} />
+                        <span
+                          className={`h-4 w-4 border rounded ${
+                            selectedAgents.includes(agent.id)
+                              ? "bg-primary border-primary"
+                              : "border-muted-foreground"
+                          }`}
+                        />
                         <span>{agent.name}</span>
                       </div>
                     ))}
@@ -565,7 +611,8 @@ export default function BenchmarksPage() {
                             <SelectTrigger>
                               <SelectValue placeholder="选择测试集">
                                 {field.value
-                                  ? testSets.find((ts) => ts.id === field.value)?.name || "选择测试集"
+                                  ? testSets.find((ts) => ts.id === field.value)
+                                      ?.name || "选择测试集"
                                   : "选择测试集"}
                               </SelectValue>
                             </SelectTrigger>
@@ -609,7 +656,8 @@ export default function BenchmarksPage() {
                         <SelectTrigger>
                           <SelectValue placeholder="选择评估器">
                             {field.value
-                              ? evaluators.find((e) => e.id === field.value)?.name || "选择评估器"
+                              ? evaluators.find((e) => e.id === field.value)
+                                  ?.name || "选择评估器"
                               : "选择评估器"}
                           </SelectValue>
                         </SelectTrigger>
@@ -639,17 +687,41 @@ export default function BenchmarksPage() {
                     <div className="text-sm text-muted-foreground space-y-1 mb-2">
                       <p>配置变量说明：</p>
                       <ul className="list-disc list-inside space-y-0.5 ml-2">
-                        <li><code className="bg-muted px-1 rounded">prompt_template</code> - 提示词模板，使用 {'{{input}}'} 插入测试用例输入</li>
-                        <li><code className="bg-muted px-1 rounded">use_session</code> - 是否保持会话状态（true/false）</li>
-                        <li><code className="bg-muted px-1 rounded">max_workers</code> - 并行执行的最大 worker 数量</li>
-                        <li><code className="bg-muted px-1 rounded">variables</code> - 自定义变量，可在提示词模板中使用 {'{{variable_name}}'} 引用</li>
+                        <li>
+                          <code className="bg-muted px-1 rounded">
+                            prompt_template
+                          </code>{" "}
+                          - 提示词模板，使用 {"{{input}}"} 插入测试用例输入
+                        </li>
+                        <li>
+                          <code className="bg-muted px-1 rounded">
+                            use_session
+                          </code>{" "}
+                          - 是否保持会话状态（true/false）
+                        </li>
+                        <li>
+                          <code className="bg-muted px-1 rounded">
+                            max_workers
+                          </code>{" "}
+                          - 并行执行的最大 worker 数量
+                        </li>
+                        <li>
+                          <code className="bg-muted px-1 rounded">
+                            variables
+                          </code>{" "}
+                          - 自定义变量，可在提示词模板中使用{" "}
+                          {"{{variable_name}}"} 引用
+                        </li>
                       </ul>
                     </div>
                     <FormControl>
-                      <Textarea
+                      <JsonEditor
+                        value={field.value || ""}
+                        onChange={(value) => {
+                          field.onChange(value);
+                        }}
                         placeholder="运行配置 JSON"
-                        className="min-h-[300px] font-mono text-sm"
-                        {...field}
+                        minHeight="300px"
                       />
                     </FormControl>
                     <FormMessage />

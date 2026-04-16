@@ -57,6 +57,8 @@ export async function POST(
           test_case_id: testCaseId,
           status: 'pending',
           actual_output: null,
+          execution_steps: null,
+          execution_answer: null,
           output_file: null,
           execution_time_ms: null,
           error_message: null,

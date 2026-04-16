@@ -1,15 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts';
+import { useEffect, useState, useRef } from 'react';
+import * as echarts from 'echarts';
 import {
   Card,
   CardContent,
@@ -37,6 +29,7 @@ import {
 } from '@/components/ui/dialog';
 import { Eye, Loader2, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 interface Benchmark {
@@ -86,7 +79,91 @@ interface ExecutionHistory {
   created_at: string;
 }
 
+// ECharts 组件
+function ScoreChart({ data }: { data: ExecutionHistory[] }) {
+  const chartRef = useRef<HTMLDivElement>(null);
+  const chartInstance = useRef<echarts.ECharts | null>(null);
+
+  useEffect(() => {
+    if (!chartRef.current) return;
+
+    // 初始化图表
+    chartInstance.current = echarts.init(chartRef.current);
+
+    const option: echarts.EChartsOption = {
+      grid: {
+        top: 30,
+        right: 20,
+        bottom: 40,
+        left: 50,
+      },
+      xAxis: {
+        type: 'category',
+        data: data.map(d => `第${d.execution_number}次`),
+        name: '执行次数',
+        nameLocation: 'middle',
+        nameGap: 25,
+        axisLabel: {
+          fontSize: 11,
+        },
+      },
+      yAxis: {
+        type: 'value',
+        min: 0,
+        max: 100,
+        name: '平均分',
+        nameLocation: 'middle',
+        nameGap: 35,
+        axisLabel: {
+          fontSize: 11,
+        },
+      },
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          const p = params[0];
+          const value = p.value !== null && p.value !== undefined ? Number(p.value).toFixed(1) : '无数据';
+          return `${p.name}<br/>平均分: ${value}`;
+        },
+      },
+      series: [
+        {
+          type: 'line',
+          data: data.map(d => d.avg_score),
+          smooth: true,
+          symbol: 'circle',
+          symbolSize: 8,
+          lineStyle: {
+            color: '#3b82f6',
+            width: 2,
+          },
+          itemStyle: {
+            color: '#3b82f6',
+          },
+          connectNulls: true,
+        },
+      ],
+    };
+
+    chartInstance.current.setOption(option);
+
+    // 响应式处理
+    const handleResize = () => {
+      chartInstance.current?.resize();
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chartInstance.current?.dispose();
+    };
+  }, [data]);
+
+  return <div ref={chartRef} className="h-[200px] w-full" />;
+}
+
 export default function BenchmarkPage() {
+  const router = useRouter();
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null);
@@ -241,21 +318,17 @@ export default function BenchmarkPage() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-      pending: 'secondary',
-      running: 'default',
-      completed: 'default',
-      failed: 'destructive',
+    const statusConfig: Record<string, { className: string; label: string }> = {
+      pending: { className: 'bg-gray-400 hover:bg-gray-500', label: '待执行' },
+      running: { className: 'bg-blue-500 hover:bg-blue-600', label: '运行中' },
+      completed: { className: 'bg-green-500 hover:bg-green-600', label: '已完成' },
+      failed: { className: 'bg-red-500 hover:bg-red-600', label: '失败' },
+      timeout: { className: 'bg-orange-500 hover:bg-orange-600', label: '超时' },
     };
-    const labels: Record<string, string> = {
-      completed: '已完成',
-      running: '运行中',
-      pending: '待执行',
-      failed: '失败',
-    };
+    const config = statusConfig[status] || { className: 'bg-gray-500', label: status };
     return (
-      <Badge variant={variants[status] || 'default'}>
-        {labels[status] || status}
+      <Badge className={config.className}>
+        {config.label}
       </Badge>
     );
   };
@@ -308,52 +381,7 @@ export default function BenchmarkPage() {
                     </CardHeader>
                     <CardContent>
                       {hasScores ? (
-                        <div className="h-[200px] w-full min-w-0 min-h-0">
-                          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                            <LineChart data={history}>
-                              <CartesianGrid
-                                strokeDasharray="3 3"
-                                stroke="#e5e7eb"
-                              />
-                              <XAxis
-                                dataKey="execution_number"
-                                tick={{ fontSize: 12 }}
-                                label={{
-                                  value: "执行次数",
-                                  position: "insideBottom",
-                                  offset: -5,
-                                  fontSize: 10,
-                                }}
-                              />
-                              <YAxis
-                                domain={[0, 100]}
-                                tick={{ fontSize: 12 }}
-                                label={{
-                                  value: "平均分",
-                                  angle: -90,
-                                  position: "insideLeft",
-                                  fontSize: 10,
-                                }}
-                              />
-                              <Tooltip
-                                formatter={(value) =>
-                                  value !== null && value !== undefined
-                                    ? [`${Number(value).toFixed(1)}`, "平均分"]
-                                    : ["无数据", "平均分"]
-                                }
-                                labelFormatter={(label) => `第 ${label} 次执行`}
-                              />
-                              <Line
-                                type="monotone"
-                                dataKey="avg_score"
-                                stroke="#3b82f6"
-                                strokeWidth={2}
-                                dot={{ r: 3, fill: "#3b82f6" }}
-                                connectNulls
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
+                        <ScoreChart data={history} />
                       ) : (
                         <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
                           暂无评分数据
@@ -398,7 +426,11 @@ export default function BenchmarkPage() {
               </TableHeader>
               <TableBody>
                 {executions.map((execution) => (
-                  <TableRow key={execution.id}>
+                  <TableRow
+                    key={execution.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => router.push(`/benchmarks/${execution.benchmark_id}`)}
+                  >
                     <TableCell className="font-medium">{execution.benchmark_name}</TableCell>
                     <TableCell>{execution.name || `执行 #${execution.id}`}</TableCell>
                     <TableCell>{getStatusBadge(execution.status)}</TableCell>
@@ -416,7 +448,10 @@ export default function BenchmarkPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => fetchExecutionDetails(execution)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fetchExecutionDetails(execution);
+                        }}
                       >
                         <Eye className="h-4 w-4 mr-1" />
                         查看详情

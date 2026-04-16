@@ -492,6 +492,8 @@ export interface Result {
   test_case_id: number;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'timeout';
   actual_output: string | null;
+  execution_steps: string | null;
+  execution_answer: string | null;
   output_file: string | null;
   execution_time_ms: number | null;
   error_message: string | null;
@@ -535,6 +537,8 @@ export function getExecutionDetails(executionId: number) {
       br.test_case_id,
       br.status,
       br.actual_output,
+      br.execution_steps,
+      br.execution_answer,
       br.output_file,
       br.execution_time_ms,
       br.error_message,
