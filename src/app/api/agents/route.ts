@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getAllAgents,
   createAgent,
-  Agent
+  Agent,
+  AgentType
 } from '@/lib/db';
 
 // GET /api/agents - 获取所有 agents
@@ -23,11 +24,34 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, command } = body;
+    const { name, description, command, agent_type, config_json } = body;
 
-    if (!name || !command) {
+    if (!name) {
       return NextResponse.json(
-        { error: 'Name and command are required' },
+        { error: 'Name is required' },
+        { status: 400 }
+      );
+    }
+
+    // 验证agent_type
+    const agentType: AgentType = agent_type || 'other';
+    if (!['openclaw', 'hermes', 'other'].includes(agentType)) {
+      return NextResponse.json(
+        { error: 'Invalid agent_type. Must be one of: openclaw, hermes, other' },
+        { status: 400 }
+      );
+    }
+
+    // 根据类型验证必填字段
+    let configJson: string;
+    if (config_json) {
+      configJson = typeof config_json === 'string' ? config_json : JSON.stringify(config_json);
+    } else if (command) {
+      // 向后兼容：从command构建config_json
+      configJson = JSON.stringify({ command });
+    } else {
+      return NextResponse.json(
+        { error: 'Command is required for this agent type' },
         { status: 400 }
       );
     }
@@ -35,7 +59,9 @@ export async function POST(request: NextRequest) {
     const agent = createAgent({
       name,
       description: description || '',
-      command
+      command: command || '',
+      agent_type: agentType,
+      config_json: configJson
     });
 
     return NextResponse.json({ agent }, { status: 201 });

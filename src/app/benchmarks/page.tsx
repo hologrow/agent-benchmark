@@ -257,7 +257,8 @@ export default function BenchmarksPage() {
       if (response.ok) {
         toast.success("Benchmark 已开始执行");
         const data = await response.json();
-        router.push(`/executions/${data.executionId}`);
+        router.push(`/benchmarks/${benchmarkId}`);
+        router.refresh();
       } else {
         const error = await response.json();
         toast.error(error.error || "启动失败");

@@ -82,10 +82,23 @@ def get_agent_details(agent_id: int) -> Optional[Dict]:
     if not agent:
         return None
 
+    # 解析 config_json，向后兼容
+    config_json = {}
+    if agent['config_json']:
+        try:
+            config_json = json.loads(agent['config_json'])
+        except (json.JSONDecodeError, TypeError):
+            config_json = {}
+
+    # 获取 agent_type，默认 'other'
+    agent_type = agent['agent_type'] if agent['agent_type'] else 'other'
+
     return {
         'id': agent['id'],
         'name': agent['name'],
-        'command': agent['command']
+        'command': agent['command'],
+        'agent_type': agent_type,
+        'config_json': config_json
     }
 
 
@@ -187,13 +200,30 @@ def run_single_test(args: Dict) -> Dict:
     prompt = parse_template(prompt_template, context)
 
     try:
-        # 获取 agent 命令并替换 {{prompt}} 变量
-        agent_command = agent['command']
-        command_str = agent_command.replace('{{prompt}}', prompt)
+        # 根据 agent_type 构建命令
+        agent_type = agent.get('agent_type', 'other')
+        config_json = agent.get('config_json', {})
 
-        # 解析命令
-        # 使用 shell=True 来支持复杂的命令（如 docker、ssh 等）
-        print(f"[执行] {command_str}")
+        if agent_type == 'openclaw':
+            # OpenClaw: 使用 URL 和 Token
+            url = config_json.get('url', '')
+            token = config_json.get('token', '')
+            if not url or not token:
+                raise ValueError('OpenClaw agent requires url and token in config_json')
+            # 转义 prompt 中的特殊字符
+            escaped_prompt = prompt.replace('"', '\\"').replace('$', '\\$')
+            command_str = f'openclaw --url {url} --token {token} --prompt "{escaped_prompt}"'
+            print(f"[执行] openclaw --url {url} --token *** --prompt \"...\"")
+        else:
+            # Hermes / Other: 使用命令模板
+            agent_command = config_json.get('command', agent['command'])
+            if not agent_command:
+                raise ValueError('Command is required for this agent type')
+
+            # 替换变量
+            command_str = agent_command.replace('{{prompt}}', prompt)
+            command_str = command_str.replace('{{execution_id}}', f'#{execution_id}')
+            print(f"[执行] {command_str}")
 
         # 执行命令
         process = subprocess.Popen(

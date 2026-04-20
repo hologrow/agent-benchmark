@@ -29,12 +29,17 @@ function initializeDatabase() {
   }
 }
 
+// Agent Types
+export type AgentType = 'openclaw' | 'hermes' | 'other';
+
 // Agent 相关操作
 export interface Agent {
   id: number;
   name: string;
   description: string;
-  command: string;
+  command: string; // 保留向后兼容，新代码使用config_json
+  agent_type: AgentType;
+  config_json: string; // JSON格式，存储类型特定配置
   created_at: string;
   updated_at: string;
 }
@@ -51,9 +56,15 @@ export function getAgentById(id: number): Agent | undefined {
 
 export function createAgent(agent: Omit<Agent, 'id' | 'created_at' | 'updated_at'>): Agent {
   const db = getDatabase();
+
+  // 设置默认值
+  const agentType = agent.agent_type || 'other';
+  const configJson = agent.config_json || '{}';
+  const command = agent.command || '';
+
   const result = db.prepare(
-    'INSERT INTO agents (name, description, command) VALUES (?, ?, ?)'
-  ).run(agent.name, agent.description, agent.command);
+    'INSERT INTO agents (name, description, command, agent_type, config_json) VALUES (?, ?, ?, ?, ?)'
+  ).run(agent.name, agent.description, command, agentType, configJson);
 
   return getAgentById(result.lastInsertRowid as number)!;
 }
@@ -66,6 +77,8 @@ export function updateAgent(id: number, agent: Partial<Omit<Agent, 'id' | 'creat
   if (agent.name !== undefined) { sets.push('name = ?'); values.push(agent.name); }
   if (agent.description !== undefined) { sets.push('description = ?'); values.push(agent.description); }
   if (agent.command !== undefined) { sets.push('command = ?'); values.push(agent.command); }
+  if (agent.agent_type !== undefined) { sets.push('agent_type = ?'); values.push(agent.agent_type); }
+  if (agent.config_json !== undefined) { sets.push('config_json = ?'); values.push(agent.config_json); }
   sets.push('updated_at = CURRENT_TIMESTAMP');
   values.push(id);
 

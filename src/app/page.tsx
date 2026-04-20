@@ -1,14 +1,13 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useRef } from 'react';
-import * as echarts from 'echarts';
+import { useEffect, useState, useRef } from "react";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -16,9 +15,9 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -26,11 +25,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
-import { Eye, Loader2, Trash2 } from 'lucide-react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
+} from "@/components/ui/dialog";
+import { Eye, Loader2, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 interface Benchmark {
   id: number;
@@ -43,7 +42,7 @@ interface Execution {
   id: number;
   benchmark_id: number;
   name: string | null;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: "pending" | "running" | "completed" | "failed";
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
@@ -82,80 +81,122 @@ interface ExecutionHistory {
 // ECharts 组件
 function ScoreChart({ data }: { data: ExecutionHistory[] }) {
   const chartRef = useRef<HTMLDivElement>(null);
-  const chartInstance = useRef<echarts.ECharts | null>(null);
+  const chartInstance = useRef<unknown>(null);
 
   useEffect(() => {
     if (!chartRef.current) return;
 
-    // 初始化图表
-    chartInstance.current = echarts.init(chartRef.current);
+    let isMounted = true;
 
-    const option: echarts.EChartsOption = {
-      grid: {
-        top: 30,
-        right: 20,
-        bottom: 40,
-        left: 50,
-      },
-      xAxis: {
-        type: 'category',
-        data: data.map(d => `第${d.execution_number}次`),
-        name: '执行次数',
-        nameLocation: 'middle',
-        nameGap: 25,
-        axisLabel: {
-          fontSize: 11,
+    // 动态导入 echarts
+    const initChart = async () => {
+      const [
+        { init, use },
+        { LineChart },
+        { GridComponent, TooltipComponent, TitleComponent },
+        { CanvasRenderer },
+      ] = await Promise.all([
+        import("echarts/core"),
+        import("echarts/charts"),
+        import("echarts/components"),
+        import("echarts/renderers"),
+      ]);
+
+      if (!isMounted || !chartRef.current) return;
+
+      // 注册模块
+      use([
+        LineChart,
+        GridComponent,
+        TooltipComponent,
+        TitleComponent,
+        CanvasRenderer,
+      ]);
+
+      // 初始化图表
+      chartInstance.current = init(chartRef.current);
+
+      const option = {
+        grid: {
+          top: 30,
+          right: 20,
+          bottom: 40,
+          left: 50,
         },
-      },
-      yAxis: {
-        type: 'value',
-        min: 0,
-        max: 100,
-        name: '平均分',
-        nameLocation: 'middle',
-        nameGap: 35,
-        axisLabel: {
-          fontSize: 11,
-        },
-      },
-      tooltip: {
-        trigger: 'axis',
-        formatter: (params: any) => {
-          const p = params[0];
-          const value = p.value !== null && p.value !== undefined ? Number(p.value).toFixed(1) : '无数据';
-          return `${p.name}<br/>平均分: ${value}`;
-        },
-      },
-      series: [
-        {
-          type: 'line',
-          data: data.map(d => d.avg_score),
-          smooth: true,
-          symbol: 'circle',
-          symbolSize: 8,
-          lineStyle: {
-            color: '#3b82f6',
-            width: 2,
+        xAxis: {
+          type: "category" as const,
+          data: data.map((d) => `第${d.execution_number}次`),
+          name: "执行次数",
+          nameLocation: "middle" as const,
+          nameGap: 25,
+          axisLabel: {
+            fontSize: 11,
           },
-          itemStyle: {
-            color: '#3b82f6',
-          },
-          connectNulls: true,
         },
-      ],
+        yAxis: {
+          type: "value" as const,
+          min: 0,
+          max: 100,
+          name: "平均分",
+          nameLocation: "middle" as const,
+          nameGap: 35,
+          axisLabel: {
+            fontSize: 11,
+          },
+        },
+        tooltip: {
+          trigger: "axis" as const,
+          formatter: (params: unknown) => {
+            const p = (params as { name: string; value: number | null }[])[0];
+            const value =
+              p.value !== null && p.value !== undefined
+                ? Number(p.value).toFixed(1)
+                : "无数据";
+            return `${p.name}<br/>平均分: ${value}`;
+          },
+        },
+        series: [
+          {
+            type: "line" as const,
+            data: data.map((d) => d.avg_score),
+            smooth: true,
+            symbol: "circle",
+            symbolSize: 8,
+            lineStyle: {
+              color: "#3b82f6",
+              width: 2,
+            },
+            itemStyle: {
+              color: "#3b82f6",
+            },
+            connectNulls: true,
+          },
+        ],
+      };
+
+      (
+        chartInstance.current as { setOption: (opt: unknown) => void }
+      ).setOption(option);
+
+      // 响应式处理
+      const handleResize = () => {
+        (chartInstance.current as { resize?: () => void } | null)?.resize?.();
+      };
+      window.addEventListener("resize", handleResize);
+
+      return () => {
+        window.removeEventListener("resize", handleResize);
+      };
     };
 
-    chartInstance.current.setOption(option);
-
-    // 响应式处理
-    const handleResize = () => {
-      chartInstance.current?.resize();
-    };
-    window.addEventListener('resize', handleResize);
+    initChart();
 
     return () => {
-      window.removeEventListener('resize', handleResize);
-      chartInstance.current?.dispose();
+      isMounted = false;
+      if (chartInstance.current) {
+        (chartInstance.current as { dispose?: () => void }).dispose?.();
+        chartInstance.current = null;
+      }
     };
   }, [data]);
 
@@ -166,15 +207,21 @@ export default function BenchmarkPage() {
   const router = useRouter();
   const [executions, setExecutions] = useState<Execution[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedExecution, setSelectedExecution] = useState<Execution | null>(null);
+  const [selectedExecution, setSelectedExecution] = useState<Execution | null>(
+    null,
+  );
   const [runDetails, setRunDetails] = useState<BenchmarkResult[] | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [executionToDelete, setExecutionToDelete] = useState<Execution | null>(null);
+  const [executionToDelete, setExecutionToDelete] = useState<Execution | null>(
+    null,
+  );
   const [deleting, setDeleting] = useState(false);
   const [benchmarks, setBenchmarks] = useState<Benchmark[]>([]);
-  const [executionHistory, setExecutionHistory] = useState<Map<number, ExecutionHistory[]>>(new Map());
+  const [executionHistory, setExecutionHistory] = useState<
+    Map<number, ExecutionHistory[]>
+  >(new Map());
   const [chartLoading, setChartLoading] = useState(true);
 
   useEffect(() => {
@@ -184,13 +231,14 @@ export default function BenchmarkPage() {
 
   const fetchBenchmarksWithHistory = async () => {
     try {
-      const benchmarksRes = await fetch('/api/benchmarks');
+      const benchmarksRes = await fetch("/api/benchmarks");
       const benchmarksData = await benchmarksRes.json();
       const benchmarksList: Benchmark[] = benchmarksData.benchmarks || [];
 
       // 按创建时间排序（最新的在前）
       benchmarksList.sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
 
       setBenchmarks(benchmarksList);
@@ -203,17 +251,19 @@ export default function BenchmarkPage() {
           if (history.length > 0) {
             historyMap.set(bm.id, history);
           }
-        })
+        }),
       );
       setExecutionHistory(historyMap);
     } catch (error) {
-      console.error('Error fetching benchmarks:', error);
+      console.error("Error fetching benchmarks:", error);
     } finally {
       setChartLoading(false);
     }
   };
 
-  const fetchExecutionHistory = async (benchmarkId: number): Promise<ExecutionHistory[]> => {
+  const fetchExecutionHistory = async (
+    benchmarkId: number,
+  ): Promise<ExecutionHistory[]> => {
     try {
       const response = await fetch(`/api/benchmarks/${benchmarkId}/executions`);
       if (response.ok) {
@@ -221,18 +271,26 @@ export default function BenchmarkPage() {
         // 按创建时间排序（最早的在前，用于计算执行序号）
         const sorted = (data.executions || []).sort(
           (a: { created_at: string }, b: { created_at: string }) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
         );
         // 添加执行序号并计算平均分
-        return sorted.map((exec: { id: number; created_at: string; avgScore?: number | null }, index: number) => ({
-          id: exec.id,
-          execution_number: index + 1,
-          avg_score: exec.avgScore ?? null,
-          created_at: exec.created_at,
-        }));
+        return sorted.map(
+          (
+            exec: { id: number; created_at: string; avgScore?: number | null },
+            index: number,
+          ) => ({
+            id: exec.id,
+            execution_number: index + 1,
+            avg_score: exec.avgScore ?? null,
+            created_at: exec.created_at,
+          }),
+        );
       }
     } catch (error) {
-      console.error(`Error fetching history for benchmark ${benchmarkId}:`, error);
+      console.error(
+        `Error fetching history for benchmark ${benchmarkId}:`,
+        error,
+      );
     }
     return [];
   };
@@ -240,14 +298,16 @@ export default function BenchmarkPage() {
   const fetchExecutions = async () => {
     try {
       // 获取所有 benchmarks，然后获取它们的 executions
-      const benchmarksRes = await fetch('/api/benchmarks');
+      const benchmarksRes = await fetch("/api/benchmarks");
       const benchmarksData = await benchmarksRes.json();
       const benchmarks: Benchmark[] = benchmarksData.benchmarks || [];
 
       // 收集所有 executions
       const allExecutions: Execution[] = [];
       for (const benchmark of benchmarks) {
-        const execRes = await fetch(`/api/benchmarks/${benchmark.id}/executions`);
+        const execRes = await fetch(
+          `/api/benchmarks/${benchmark.id}/executions`,
+        );
         const execData = await execRes.json();
         if (execData.executions) {
           for (const exec of execData.executions) {
@@ -260,10 +320,13 @@ export default function BenchmarkPage() {
       }
 
       // 按创建时间排序
-      allExecutions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      allExecutions.sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
       setExecutions(allExecutions);
     } catch (error) {
-      console.error('Error fetching executions:', error);
+      console.error("Error fetching executions:", error);
     } finally {
       setLoading(false);
     }
@@ -279,7 +342,7 @@ export default function BenchmarkPage() {
       const data = await response.json();
       setRunDetails(data.details?.results || []);
     } catch (error) {
-      console.error('Error fetching execution details:', error);
+      console.error("Error fetching execution details:", error);
     } finally {
       setDetailsLoading(false);
     }
@@ -297,21 +360,21 @@ export default function BenchmarkPage() {
     setDeleting(true);
     try {
       const response = await fetch(`/api/executions/${executionToDelete.id}`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
 
       if (response.ok) {
-        toast.success('执行记录已删除');
+        toast.success("执行记录已删除");
         setDeleteDialogOpen(false);
         setExecutionToDelete(null);
         fetchExecutions();
       } else {
         const error = await response.json();
-        toast.error(error.error || '删除失败');
+        toast.error(error.error || "删除失败");
       }
     } catch (error) {
-      console.error('Error deleting execution:', error);
-      toast.error('删除失败');
+      console.error("Error deleting execution:", error);
+      toast.error("删除失败");
     } finally {
       setDeleting(false);
     }
@@ -319,18 +382,23 @@ export default function BenchmarkPage() {
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { className: string; label: string }> = {
-      pending: { className: 'bg-gray-400 hover:bg-gray-500', label: '待执行' },
-      running: { className: 'bg-blue-500 hover:bg-blue-600', label: '运行中' },
-      completed: { className: 'bg-green-500 hover:bg-green-600', label: '已完成' },
-      failed: { className: 'bg-red-500 hover:bg-red-600', label: '失败' },
-      timeout: { className: 'bg-orange-500 hover:bg-orange-600', label: '超时' },
+      pending: { className: "bg-gray-400 hover:bg-gray-500", label: "待执行" },
+      running: { className: "bg-blue-500 hover:bg-blue-600", label: "运行中" },
+      completed: {
+        className: "bg-green-500 hover:bg-green-600",
+        label: "已完成",
+      },
+      failed: { className: "bg-red-500 hover:bg-red-600", label: "失败" },
+      timeout: {
+        className: "bg-orange-500 hover:bg-orange-600",
+        label: "超时",
+      },
     };
-    const config = statusConfig[status] || { className: 'bg-gray-500', label: status };
-    return (
-      <Badge className={config.className}>
-        {config.label}
-      </Badge>
-    );
+    const config = statusConfig[status] || {
+      className: "bg-gray-500",
+      label: status,
+    };
+    return <Badge className={config.className}>{config.label}</Badge>;
   };
 
   const getScoreBadge = (score: number | null) => {
@@ -352,7 +420,7 @@ export default function BenchmarkPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold">Benchmark 展示</h1>
+        <h1 className="text-3xl font-bold">Benchmark 评分</h1>
         <p className="text-muted-foreground mt-2">
           查看所有 Benchmark 执行结果和详细评分
         </p>
@@ -408,7 +476,10 @@ export default function BenchmarkPage() {
           ) : executions.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               暂无执行记录，请先
-              <Link href="/benchmarks" className="text-primary hover:underline ml-1">
+              <Link
+                href="/benchmarks"
+                className="text-primary hover:underline ml-1"
+              >
                 创建并执行 Benchmark
               </Link>
             </div>
@@ -429,20 +500,28 @@ export default function BenchmarkPage() {
                   <TableRow
                     key={execution.id}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => router.push(`/benchmarks/${execution.benchmark_id}`)}
+                    onClick={() =>
+                      router.push(`/benchmarks/${execution.benchmark_id}`)
+                    }
                   >
-                    <TableCell className="font-medium">{execution.benchmark_name}</TableCell>
-                    <TableCell>{execution.name || `执行 #${execution.id}`}</TableCell>
+                    <TableCell className="font-medium">
+                      {execution.benchmark_name}
+                    </TableCell>
+                    <TableCell>
+                      {execution.name || `执行 #${execution.id}`}
+                    </TableCell>
                     <TableCell>{getStatusBadge(execution.status)}</TableCell>
                     <TableCell>
                       {execution.started_at
-                        ? new Date(execution.started_at).toLocaleString('zh-CN')
-                        : '-'}
+                        ? new Date(execution.started_at).toLocaleString("zh-CN")
+                        : "-"}
                     </TableCell>
                     <TableCell>
                       {execution.completed_at
-                        ? new Date(execution.completed_at).toLocaleString('zh-CN')
-                        : '-'}
+                        ? new Date(execution.completed_at).toLocaleString(
+                            "zh-CN",
+                          )
+                        : "-"}
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -477,7 +556,9 @@ export default function BenchmarkPage() {
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {selectedExecution?.benchmark_name} - {selectedExecution?.name || `执行 #${selectedExecution?.id}`} - 详细结果
+              {selectedExecution?.benchmark_name} -{" "}
+              {selectedExecution?.name || `执行 #${selectedExecution?.id}`} -
+              详细结果
             </DialogTitle>
             <DialogDescription>
               查看每个测试用例的输入、输出和评分详情
@@ -498,7 +579,9 @@ export default function BenchmarkPage() {
                         <CardTitle className="text-lg">
                           {result.agent_name} - {result.test_id}
                         </CardTitle>
-                        <CardDescription>{result.test_case_name}</CardDescription>
+                        <CardDescription>
+                          {result.test_case_name}
+                        </CardDescription>
                       </div>
                       <div className="flex items-center gap-2">
                         {getStatusBadge(result.status)}
@@ -517,7 +600,7 @@ export default function BenchmarkPage() {
                       <div>
                         <h4 className="font-semibold mb-2">期望输出</h4>
                         <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap">
-                          {result.expected_output || '无'}
+                          {result.expected_output || "无"}
                         </div>
                       </div>
                     </div>
@@ -525,7 +608,7 @@ export default function BenchmarkPage() {
                     <div>
                       <h4 className="font-semibold mb-2">实际输出</h4>
                       <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">
-                        {result.actual_output || '无输出'}
+                        {result.actual_output || "无输出"}
                       </div>
                     </div>
 
@@ -533,41 +616,51 @@ export default function BenchmarkPage() {
                       <div>
                         <h4 className="font-semibold mb-2">关键测试点</h4>
                         <ul className="space-y-1">
-                          {parseJson(result.key_points).map((point: string, idx: number) => {
-                            const metPoints = parseJson(result.key_points_met);
-                            const isMet = metPoints.includes(point);
-                            return (
-                              <li
-                                key={idx}
-                                className={`text-sm flex items-center gap-2 ${
-                                  isMet ? 'text-green-600' : 'text-red-600'
-                                }`}
-                              >
-                                <span>{isMet ? '✓' : '✗'}</span>
-                                {point}
-                              </li>
-                            );
-                          })}
+                          {parseJson(result.key_points).map(
+                            (point: string, idx: number) => {
+                              const metPoints = parseJson(
+                                result.key_points_met,
+                              );
+                              const isMet = metPoints.includes(point);
+                              return (
+                                <li
+                                  key={idx}
+                                  className={`text-sm flex items-center gap-2 ${
+                                    isMet ? "text-green-600" : "text-red-600"
+                                  }`}
+                                >
+                                  <span>{isMet ? "✓" : "✗"}</span>
+                                  {point}
+                                </li>
+                              );
+                            },
+                          )}
                         </ul>
                       </div>
                       <div>
                         <h4 className="font-semibold mb-2">禁止点</h4>
                         <ul className="space-y-1">
-                          {parseJson(result.forbidden_points).map((point: string, idx: number) => {
-                            const violatedPoints = parseJson(result.forbidden_points_violated);
-                            const isViolated = violatedPoints.includes(point);
-                            return (
-                              <li
-                                key={idx}
-                                className={`text-sm flex items-center gap-2 ${
-                                  isViolated ? 'text-red-600' : 'text-green-600'
-                                }`}
-                              >
-                                <span>{isViolated ? '✗' : '✓'}</span>
-                                {point}
-                              </li>
-                            );
-                          })}
+                          {parseJson(result.forbidden_points).map(
+                            (point: string, idx: number) => {
+                              const violatedPoints = parseJson(
+                                result.forbidden_points_violated,
+                              );
+                              const isViolated = violatedPoints.includes(point);
+                              return (
+                                <li
+                                  key={idx}
+                                  className={`text-sm flex items-center gap-2 ${
+                                    isViolated
+                                      ? "text-red-600"
+                                      : "text-green-600"
+                                  }`}
+                                >
+                                  <span>{isViolated ? "✗" : "✓"}</span>
+                                  {point}
+                                </li>
+                              );
+                            },
+                          )}
                         </ul>
                       </div>
                     </div>
@@ -605,7 +698,9 @@ export default function BenchmarkPage() {
           <DialogHeader>
             <DialogTitle>确认删除</DialogTitle>
             <DialogDescription>
-              确定要删除执行记录 &quot;{executionToDelete?.name || `执行 #${executionToDelete?.id}`}&quot; 吗？
+              确定要删除执行记录 &quot;
+              {executionToDelete?.name || `执行 #${executionToDelete?.id}`}
+              &quot; 吗？
               <br />
               此操作将同时删除该执行的所有结果和评估数据，且无法撤销。
             </DialogDescription>

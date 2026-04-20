@@ -139,6 +139,8 @@ export default function TestSetsPage() {
 
   // Test Set dialogs
   const [createSetDialogOpen, setCreateSetDialogOpen] = useState(false);
+  const [editSetDialogOpen, setEditSetDialogOpen] = useState(false);
+  const [editingTestSet, setEditingTestSet] = useState<TestSet | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [selectedTestSet, setSelectedTestSet] = useState<TestSet | null>(null);
   const [deleteSetDialogOpen, setDeleteSetDialogOpen] = useState(false);
@@ -287,6 +289,60 @@ export default function TestSetsPage() {
   const openDeleteSetDialog = (testSet: TestSet) => {
     setTestSetToDelete(testSet);
     setDeleteSetDialogOpen(true);
+  };
+
+  const openEditSetDialog = async (testSet: TestSet) => {
+    // Fetch full details including test cases
+    try {
+      const response = await fetch(`/api/test-sets?id=${testSet.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        const fullTestSet = data.testSet;
+        setEditingTestSet(fullTestSet);
+        testSetForm.reset({
+          name: fullTestSet.name,
+          description: fullTestSet.description || '',
+          test_case_ids: fullTestSet.test_cases?.map((tc: TestCase) => tc.id) || [],
+        });
+        setSelectedTestCaseIds(fullTestSet.test_cases?.map((tc: TestCase) => tc.id) || []);
+        setEditSetDialogOpen(true);
+      } else {
+        toast.error('获取测试集详情失败');
+      }
+    } catch (error) {
+      console.error('Error fetching test set details:', error);
+      toast.error('获取测试集详情失败');
+    }
+  };
+
+  const onUpdateTestSet = async (values: TestSetFormData) => {
+    if (!editingTestSet) return;
+
+    try {
+      const response = await fetch(`/api/test-sets?id=${editingTestSet.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...values,
+          source: editingTestSet.source || 'manual',
+        }),
+      });
+
+      if (response.ok) {
+        toast.success('测试集已更新');
+        setEditSetDialogOpen(false);
+        setEditingTestSet(null);
+        testSetForm.reset();
+        setSelectedTestCaseIds([]);
+        fetchData();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || '更新失败');
+      }
+    } catch (error) {
+      console.error('Error updating test set:', error);
+      toast.error('更新失败');
+    }
   };
 
   const handleDeleteSet = async () => {
@@ -693,6 +749,13 @@ export default function TestSetsPage() {
                             <Button
                               size="sm"
                               variant="ghost"
+                              onClick={() => openEditSetDialog(testSet)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
                               className="text-destructive hover:text-destructive"
                               onClick={() => openDeleteSetDialog(testSet)}
                             >
@@ -862,26 +925,45 @@ export default function TestSetsPage() {
                   {testCases.map((testCase) => (
                     <div
                       key={testCase.id}
-                      className={`flex items-center gap-2 p-2 rounded cursor-pointer transition-colors ${
+                      className={`flex items-center gap-2 p-2 rounded transition-colors ${
                         selectedTestCaseIds.includes(testCase.id)
                           ? 'bg-primary/10'
                           : 'hover:bg-muted'
                       }`}
-                      onClick={() => toggleTestCase(testCase.id)}
                     >
-                      <CheckSquare
-                        className={`h-4 w-4 ${
-                          selectedTestCaseIds.includes(testCase.id)
-                            ? 'text-primary'
-                            : 'text-muted-foreground'
-                        }`}
-                      />
-                      <div>
-                        <div className="font-medium">{testCase.test_id}</div>
-                        <div className="text-xs text-muted-foreground truncate max-w-[400px]">
-                          {testCase.name}
+                      <div
+                        className="flex items-center gap-2 flex-1 cursor-pointer"
+                        onClick={() => toggleTestCase(testCase.id)}
+                      >
+                        <CheckSquare
+                          className={`h-4 w-4 ${
+                            selectedTestCaseIds.includes(testCase.id)
+                              ? 'text-primary'
+                              : 'text-muted-foreground'
+                          }`}
+                        />
+                        <div>
+                          <div className="font-medium">{testCase.test_id}</div>
+                          <div className="text-xs text-muted-foreground truncate max-w-[300px]">
+                            {testCase.name}
+                          </div>
                         </div>
                       </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCreateSetDialogOpen(false);
+                          setEditSetDialogOpen(false);
+                          handleEditCase(testCase);
+                        }}
+                      >
+                        <Edit className="h-3 w-3 mr-1" />
+                        编辑
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -894,6 +976,115 @@ export default function TestSetsPage() {
 
               <DialogFooter>
                 <Button type="submit">创建</Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Test Set Dialog */}
+      <Dialog open={editSetDialogOpen} onOpenChange={setEditSetDialogOpen}>
+        <DialogContent className="!max-w-[800px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>编辑测试集</DialogTitle>
+            <DialogDescription>
+              修改测试集的名称、描述和包含的测试用例
+            </DialogDescription>
+          </DialogHeader>
+
+          <Form {...testSetForm}>
+            <form
+              onSubmit={testSetForm.handleSubmit(onUpdateTestSet)}
+              className="space-y-6"
+            >
+              <FormField
+                control={testSetForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>名称</FormLabel>
+                    <FormControl>
+                      <Input placeholder="测试集名称" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={testSetForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>描述</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="测试集描述" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div>
+                <FormLabel>选择测试用例</FormLabel>
+                <div className="mt-2 border rounded-md p-4 space-y-2 max-h-[300px] overflow-y-auto">
+                  {testCases.map((testCase) => (
+                    <div
+                      key={testCase.id}
+                      className={`flex items-center gap-2 p-2 rounded transition-colors ${
+                        selectedTestCaseIds.includes(testCase.id)
+                          ? 'bg-primary/10'
+                          : 'hover:bg-muted'
+                      }`}
+                    >
+                      <div
+                        className="flex items-center gap-2 flex-1 cursor-pointer"
+                        onClick={() => toggleTestCase(testCase.id)}
+                      >
+                        <CheckSquare
+                          className={`h-4 w-4 ${
+                            selectedTestCaseIds.includes(testCase.id)
+                              ? 'text-primary'
+                              : 'text-muted-foreground'
+                          }`}
+                        />
+                        <div>
+                          <div className="font-medium">{testCase.test_id}</div>
+                          <div className="text-xs text-muted-foreground truncate max-w-[300px]">
+                            {testCase.name}
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCreateSetDialogOpen(false);
+                          setEditSetDialogOpen(false);
+                          handleEditCase(testCase);
+                        }}
+                      >
+                        <Edit className="h-3 w-3 mr-1" />
+                        编辑
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                {testSetForm.formState.errors.test_case_ids && (
+                  <p className="text-sm text-destructive mt-1">
+                    {testSetForm.formState.errors.test_case_ids.message}
+                  </p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" type="button" onClick={() => setEditSetDialogOpen(false)}>
+                  取消
+                </Button>
+                <Button type="submit">保存</Button>
               </DialogFooter>
             </form>
           </Form>

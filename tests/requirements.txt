@@ -1,0 +1,15 @@
+# 测试依赖
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-asyncio>=0.21.0
+unittest-xml-reporting>=3.2.0
+
+# 覆盖率
+coverage>=7.0.0
+
+# Mock
+responses>=0.23.0
+
+# 类型检查（可选）
+mypy>=1.0.0
+types-requests>=2.28.0

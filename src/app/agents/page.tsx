@@ -35,24 +35,45 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Plus, Edit, Trash2, Loader2, Users } from 'lucide-react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
+
+type AgentType = 'openclaw' | 'hermes' | 'other';
 
 interface Agent {
   id: number;
   name: string;
   description: string;
   command: string;
+  agent_type: AgentType;
+  config_json: string;
   created_at: string;
+}
+
+// OpenClaw配置
+interface OpenClawConfig {
+  url: string;
+  token: string;
+}
+
+// 命令行配置
+interface CommandAgentConfig {
+  command: string;
 }
 
 const formSchema = z.object({
   name: z.string().min(1, '名称不能为空'),
   description: z.string().optional(),
-  command: z.string().min(1, '命令行不能为空'),
+  agentType: z.enum(['openclaw', 'hermes', 'other'] as const),
+  // OpenClaw 配置
+  openclawUrl: z.string().optional(),
+  openclawToken: z.string().optional(),
+  // 命令行配置 (Hermes/Other)
+  command: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -69,7 +90,10 @@ docker run --rm myimage python -c "print('{{prompt}}')"
 ssh user@host "acpx myagent exec '{{prompt}}'"
 
 # 带额外参数
-acpx --approve-all --format json myagent exec "{{prompt}}"`;
+acpx --approve-all --format json myagent exec "{{prompt}}"
+
+# 使用执行批次ID创建日志目录
+acpx --log-dir ./logs/{{execution_id}} myagent exec "{{prompt}}"`;
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -79,14 +103,22 @@ export default function AgentsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingAgent, setDeletingAgent] = useState<Agent | null>(null);
 
-  const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      name: '',
-      description: '',
-      command: defaultCommand,
-    },
-  });
+  const form = useForm<FormData>(
+    {
+      resolver: zodResolver(formSchema),
+      defaultValues: {
+        name: '',
+        description: '',
+        agentType: 'other',
+        openclawUrl: '',
+        openclawToken: '',
+        command: defaultCommand,
+      },
+    }
+  );
+
+  // 监听 agentType 变化
+  const agentType = useWatch({ control: form.control, name: 'agentType' });
 
   useEffect(() => {
     fetchAgents();
@@ -110,10 +142,49 @@ export default function AgentsPage() {
       const url = editingAgent ? `/api/agents/${editingAgent.id}` : '/api/agents';
       const method = editingAgent ? 'PUT' : 'POST';
 
+      // 根据类型构建 config_json
+      let configJson: Record<string, string> = {};
+      let command = '';
+
+      if (values.agentType === 'openclaw') {
+        if (!values.openclawUrl || !values.openclawToken) {
+          toast.error('OpenClaw 类型需要填写 URL 和 Token');
+          return;
+        }
+        const openclawConfig: OpenClawConfig = {
+          url: values.openclawUrl,
+          token: values.openclawToken,
+        };
+        configJson = {
+          url: openclawConfig.url,
+          token: openclawConfig.token,
+        };
+        command = `openclaw --url ${values.openclawUrl} --token ***`;
+      } else {
+        // hermes / other
+        if (!values.command) {
+          toast.error('命令行不能为空');
+          return;
+        }
+        const commandConfig: CommandAgentConfig = {
+          command: values.command,
+        };
+        configJson = {
+          command: commandConfig.command,
+        };
+        command = values.command;
+      }
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          name: values.name,
+          description: values.description,
+          agent_type: values.agentType,
+          command,
+          config_json: configJson,
+        }),
       });
 
       if (response.ok) {
@@ -134,10 +205,23 @@ export default function AgentsPage() {
 
   const handleEdit = (agent: Agent) => {
     setEditingAgent(agent);
+
+    // 解析 config_json
+    let config: Record<string, unknown> = {};
+    try {
+      config = JSON.parse(agent.config_json || '{}');
+    } catch {
+      // 向后兼容：从 command 解析
+      config = { command: agent.command };
+    }
+
     form.reset({
       name: agent.name,
       description: agent.description,
-      command: agent.command,
+      agentType: agent.agent_type || 'other',
+      openclawUrl: (config as unknown as OpenClawConfig).url || '',
+      openclawToken: (config as unknown as OpenClawConfig).token || '',
+      command: (config as unknown as CommandAgentConfig).command || agent.command || defaultCommand,
     });
     setDialogOpen(true);
   };
@@ -169,6 +253,9 @@ export default function AgentsPage() {
     form.reset({
       name: '',
       description: '',
+      agentType: 'other',
+      openclawUrl: '',
+      openclawToken: '',
       command: defaultCommand,
     });
     setDialogOpen(true);
@@ -176,6 +263,20 @@ export default function AgentsPage() {
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString('zh-CN');
+  };
+
+  // 获取Agent类型显示名称
+  const getAgentTypeLabel = (type: AgentType) => {
+    switch (type) {
+      case 'openclaw':
+        return 'OpenClaw';
+      case 'hermes':
+        return 'Hermes';
+      case 'other':
+        return 'Other';
+      default:
+        return type;
+    }
   };
 
   return (
@@ -214,8 +315,9 @@ export default function AgentsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>名称</TableHead>
+                  <TableHead>类型</TableHead>
                   <TableHead>描述</TableHead>
-                  <TableHead>命令行预览</TableHead>
+                  <TableHead>配置预览</TableHead>
                   <TableHead>创建时间</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
@@ -224,9 +326,25 @@ export default function AgentsPage() {
                 {agents.map((agent) => (
                   <TableRow key={agent.id}>
                     <TableCell className="font-medium">{agent.name}</TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-muted">
+                        {getAgentTypeLabel(agent.agent_type || 'other')}
+                      </span>
+                    </TableCell>
                     <TableCell className="max-w-xs truncate">{agent.description || '-'}</TableCell>
                     <TableCell className="max-w-md truncate font-mono text-xs">
-                      {agent.command}
+                      {agent.agent_type === 'openclaw' ? (
+                        <span className="text-muted-foreground">OpenClaw 配置</span>
+                      ) : (
+                        (() => {
+                          try {
+                            const config = JSON.parse(agent.config_json || '{}');
+                            return config.command || agent.command;
+                          } catch {
+                            return agent.command;
+                          }
+                        })()
+                      )}
                     </TableCell>
                     <TableCell>{formatDate(agent.created_at)}</TableCell>
                     <TableCell className="text-right">
@@ -259,12 +377,12 @@ export default function AgentsPage() {
           <DialogHeader>
             <DialogTitle>{editingAgent ? '编辑 Agent' : '新建 Agent'}</DialogTitle>
             <DialogDescription>
-              配置 Agent 名称和执行命令行，支持使用 {'{{prompt}}'} 变量
+              配置 Agent 名称、类型和对应参数
             </DialogDescription>
           </DialogHeader>
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
                 control={form.control}
                 name="name"
@@ -293,30 +411,130 @@ export default function AgentsPage() {
                 )}
               />
 
+              {/* Agent 类型选择 */}
               <FormField
                 control={form.control}
-                name="command"
+                name="agentType"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>执行命令</FormLabel>
+                  <FormItem className="space-y-3">
+                    <FormLabel>Agent 类型</FormLabel>
                     <FormControl>
-                      <Textarea
-                        placeholder="输入执行命令，使用 {{prompt}} 作为输入变量"
-                        className="min-h-[100px] font-mono text-sm"
-                        {...field}
-                      />
+                      <RadioGroup
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                        value={field.value}
+                        className="flex flex-col space-y-1"
+                      >
+                        <FormItem className="flex items-center space-x-3 space-y-0">
+                          <FormControl>
+                            <RadioGroupItem value="openclaw" />
+                          </FormControl>
+                          <FormLabel className="font-normal cursor-pointer">
+                            <span className="font-medium">OpenClaw</span>
+                            <span className="text-muted-foreground text-sm ml-2">通过 URL 和 Token 连接 OpenClaw 服务</span>
+                          </FormLabel>
+                        </FormItem>
+                        <FormItem className="flex items-center space-x-3 space-y-0">
+                          <FormControl>
+                            <RadioGroupItem value="hermes" />
+                          </FormControl>
+                          <FormLabel className="font-normal cursor-pointer">
+                            <span className="font-medium">Hermes</span>
+                            <span className="text-muted-foreground text-sm ml-2">使用 Hermes CLI 执行</span>
+                          </FormLabel>
+                        </FormItem>
+                        <FormItem className="flex items-center space-x-3 space-y-0">
+                          <FormControl>
+                            <RadioGroupItem value="other" />
+                          </FormControl>
+                          <FormLabel className="font-normal cursor-pointer">
+                            <span className="font-medium">Other</span>
+                            <span className="text-muted-foreground text-sm ml-2">自定义命令行执行</span>
+                          </FormLabel>
+                        </FormItem>
+                      </RadioGroup>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              <div className="bg-muted p-4 rounded-md">
-                <h4 className="font-semibold mb-2 text-sm">命令示例</h4>
-                <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono">
-                  {commandExamples}
-                </pre>
-              </div>
+              {/* OpenClaw 配置表单 */}
+              {agentType === 'openclaw' && (
+                <div className="space-y-4 border rounded-lg p-4 bg-muted/50">
+                  <h4 className="font-medium text-sm">OpenClaw 配置</h4>
+                  <FormField
+                    control={form.control}
+                    name="openclawUrl"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>OpenClaw URL</FormLabel>
+                        <FormControl>
+                          <Input placeholder="如：http://localhost:8080" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="openclawToken"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Token</FormLabel>
+                        <FormControl>
+                          <Input type="password" placeholder="OpenClaw 访问令牌" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
+
+              {/* Hermes / Other 命令配置 */}
+              {(agentType === 'hermes' || agentType === 'other') && (
+                <div className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="command"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>执行命令</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="输入执行命令，可使用 {{prompt}}、{{execution_id}} 等变量"
+                            className="min-h-[100px] font-mono text-sm"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="bg-muted p-4 rounded-md">
+                    <h4 className="font-semibold mb-2 text-sm">可用变量</h4>
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-2">
+                        <code className="text-xs bg-background px-1.5 py-0.5 rounded font-mono text-primary">{'{{prompt}}'}</code>
+                        <span className="text-xs text-muted-foreground">测试用例输入内容或训练指令</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <code className="text-xs bg-background px-1.5 py-0.5 rounded font-mono text-primary">{'{{execution_id}}'}</code>
+                        <span className="text-xs text-muted-foreground">执行批次ID，例如 #14，可用于创建日志目录或标识执行批次</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-muted p-4 rounded-md">
+                    <h4 className="font-semibold mb-2 text-sm">命令示例</h4>
+                    <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono">
+                      {commandExamples}
+                    </pre>
+                  </div>
+                </div>
+              )}
 
               <DialogFooter>
                 <Button type="submit">{editingAgent ? '保存' : '创建'}</Button>

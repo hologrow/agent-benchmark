@@ -39,7 +39,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, description, command } = body;
+    const { name, description, command, agent_type, config_json } = body;
 
     const agent = getAgentById(parseInt(id));
     if (!agent) {
@@ -49,10 +49,24 @@ export async function PUT(
       );
     }
 
+    // 验证agent_type
+    if (agent_type !== undefined) {
+      if (!['openclaw', 'hermes', 'other'].includes(agent_type)) {
+        return NextResponse.json(
+          { error: 'Invalid agent_type. Must be one of: openclaw, hermes, other' },
+          { status: 400 }
+        );
+      }
+    }
+
     const updateData: Parameters<typeof updateAgent>[1] = {};
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
     if (command !== undefined) updateData.command = command;
+    if (agent_type !== undefined) updateData.agent_type = agent_type;
+    if (config_json !== undefined) {
+      updateData.config_json = typeof config_json === 'string' ? config_json : JSON.stringify(config_json);
+    }
 
     const updatedAgent = updateAgent(parseInt(id), updateData);
     return NextResponse.json({ agent: updatedAgent });

@@ -10,15 +10,17 @@ import {
   PlayCircle,
   Brain,
   FolderOpen,
+  GraduationCap,
 } from "lucide-react";
 
 const navItems = [
-  { href: "/", label: "Benchmark 展示", icon: BarChart3 },
+  { href: "/", label: "Benchmark 评分", icon: BarChart3 },
   { href: "/test-sets", label: "测试集", icon: FolderOpen },
   { href: "/agents", label: "Agent 管理", icon: Users },
   { href: "/models", label: "模型管理", icon: Brain },
   { href: "/evaluators", label: "评估器管理", icon: Settings },
   { href: "/benchmarks", label: "Benchmark 管理", icon: PlayCircle },
+  { href: "/rl-training", label: "RL-强化训练", icon: GraduationCap },
 ];
 
 export function NavBar() {
