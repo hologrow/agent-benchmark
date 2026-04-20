@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS execution_traces (
     result_id INTEGER NOT NULL UNIQUE,
     trace_id TEXT NOT NULL,
     magic_code TEXT NOT NULL,
+    trace_content TEXT,
     synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (result_id) REFERENCES benchmark_results(id) ON DELETE CASCADE

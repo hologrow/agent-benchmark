@@ -407,7 +407,7 @@ export interface Execution {
   id: number;
   benchmark_id: number;
   name: string | null;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   evaluation_status: 'pending' | 'running' | 'completed' | 'failed' | null;
   started_at: string | null;
   completed_at: string | null;
@@ -503,7 +503,7 @@ export interface Result {
   execution_id: number;
   agent_id: number;
   test_case_id: number;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'timeout';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'timeout' | 'cancelled';
   actual_output: string | null;
   execution_steps: string | null;
   execution_answer: string | null;
@@ -574,7 +574,8 @@ export function getExecutionDetails(executionId: number) {
       e.key_points_met,
       e.forbidden_points_violated,
       et.trace_id,
-      et.synced_at as trace_synced_at
+      et.synced_at as trace_synced_at,
+      et.trace_content
     FROM benchmark_results br
     JOIN agents a ON br.agent_id = a.id
     JOIN test_cases tc ON br.test_case_id = tc.id
@@ -910,6 +911,7 @@ export interface ExecutionTrace {
   result_id: number;
   trace_id: string;
   magic_code: string;
+  trace_content: string | null;
   synced_at: string;
   created_at: string;
 }
@@ -917,8 +919,8 @@ export interface ExecutionTrace {
 export function createExecutionTrace(trace: Omit<ExecutionTrace, 'id' | 'synced_at' | 'created_at'>): ExecutionTrace {
   const db = getDatabase();
   const result = db.prepare(
-    'INSERT INTO execution_traces (result_id, trace_id, magic_code) VALUES (?, ?, ?)'
-  ).run(trace.result_id, trace.trace_id, trace.magic_code);
+    'INSERT INTO execution_traces (result_id, trace_id, magic_code, trace_content) VALUES (?, ?, ?, ?)'
+  ).run(trace.result_id, trace.trace_id, trace.magic_code, trace.trace_content ?? null);
 
   return db.prepare('SELECT * FROM execution_traces WHERE id = ?').get(result.lastInsertRowid) as ExecutionTrace;
 }
@@ -949,4 +951,27 @@ export function getPendingTraceSyncResults(execution_id: number): Result[] {
 export function updateExecutionTraceSyncTime(result_id: number): void {
   const db = getDatabase();
   db.prepare('UPDATE execution_traces SET synced_at = CURRENT_TIMESTAMP WHERE result_id = ?').run(result_id);
+}
+
+// ==================== Result 更新操作 ====================
+
+export function updateResult(id: number, result: Partial<Pick<Result, 'status' | 'actual_output' | 'execution_steps' | 'execution_answer' | 'output_file' | 'execution_time_ms' | 'error_message' | 'evaluation_error' | 'started_at' | 'completed_at'>>): Result {
+  const db = getDatabase();
+  const sets: string[] = [];
+  const values: unknown[] = [];
+
+  if (result.status !== undefined) { sets.push('status = ?'); values.push(result.status); }
+  if (result.actual_output !== undefined) { sets.push('actual_output = ?'); values.push(result.actual_output); }
+  if (result.execution_steps !== undefined) { sets.push('execution_steps = ?'); values.push(result.execution_steps); }
+  if (result.execution_answer !== undefined) { sets.push('execution_answer = ?'); values.push(result.execution_answer); }
+  if (result.output_file !== undefined) { sets.push('output_file = ?'); values.push(result.output_file); }
+  if (result.execution_time_ms !== undefined) { sets.push('execution_time_ms = ?'); values.push(result.execution_time_ms); }
+  if (result.error_message !== undefined) { sets.push('error_message = ?'); values.push(result.error_message); }
+  if (result.evaluation_error !== undefined) { sets.push('evaluation_error = ?'); values.push(result.evaluation_error); }
+  if (result.started_at !== undefined) { sets.push('started_at = ?'); values.push(result.started_at); }
+  if (result.completed_at !== undefined) { sets.push('completed_at = ?'); values.push(result.completed_at); }
+  values.push(id);
+
+  db.prepare(`UPDATE benchmark_results SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+  return db.prepare('SELECT * FROM benchmark_results WHERE id = ?').get(id) as Result;
 }

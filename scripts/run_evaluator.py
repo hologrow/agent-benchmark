@@ -169,6 +169,7 @@ def evaluate_with_openai(prompt: str, model_id: str, api_key: str, base_url: Opt
         }
 
 
+
 def evaluate_single_result(args: Dict) -> Dict:
     """评估单个结果（用于多进程）"""
     result_id = args['result_id']
@@ -178,7 +179,7 @@ def evaluate_single_result(args: Dict) -> Dict:
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # 获取结果详情
+    # 获取结果详情（包含 trace 信息）
     cursor.execute('''
         SELECT
             br.*,
@@ -189,10 +190,12 @@ def evaluate_single_result(args: Dict) -> Dict:
             tc.expected_output,
             tc.key_points,
             tc.forbidden_points,
-            tc.how
+            tc.how,
+            et.trace_content
         FROM benchmark_results br
         JOIN agents a ON br.agent_id = a.id
         JOIN test_cases tc ON br.test_case_id = tc.id
+        LEFT JOIN execution_traces et ON et.result_id = br.id
         WHERE br.id = ?
     ''', (result_id,))
 
@@ -211,6 +214,14 @@ def evaluate_single_result(args: Dict) -> Dict:
     if not execution_answer and result['actual_output']:
         execution_answer = result['actual_output']
 
+    # 构建 trace 信息（直接从数据库读取）
+    trace_content = result['trace_content'] if result['trace_content'] else ''
+
+    if trace_content:
+        log(f"[调试] 从数据库读取 trace 内容成功，长度: {len(trace_content)} 字符")
+    else:
+        log(f"[警告] 数据库中没有 trace 内容")
+
     context = {
         'agent_name': result['agent_name'],
         'test_id': result['test_id'],
@@ -224,6 +235,7 @@ def evaluate_single_result(args: Dict) -> Dict:
         'forbidden_points': json.dumps(forbidden_points, ensure_ascii=False),
         'how': result['how'] or '',
         'execution_time_ms': result['execution_time_ms'] or 0,
+        'trace': trace_content,
         **evaluator_config.get('variables', {})
     }
 
@@ -253,6 +265,10 @@ def evaluate_single_result(args: Dict) -> Dict:
 ## Agent 执行过程（执行步骤和中间过程）
 {{execution_steps}}
 
+## Langfuse Trace 内容
+{{trace}}
+如果提供了 trace 内容，可以参考其中的详细执行过程、输入输出、模型调用等信息来更准确地评估 Agent 的行为。
+
 ## 评估要求
 1. 检查实际输出或执行答案是否满足所有关键测试点
 2. 检查实际输出或执行答案是否触犯了任何禁止点
@@ -263,6 +279,7 @@ def evaluate_single_result(args: Dict) -> Dict:
 - {{actual_output}}: Agent 的原始完整输出
 - {{execution_answer}}: 解析后的最终答案（推荐用于评估内容正确性）
 - {{execution_steps}}: 执行步骤和工具调用过程（用于评估执行路径）
+- {{trace}}: 从 Langfuse 获取的完整 trace 内容，包含详细的执行步骤、输入输出、模型调用等信息（如果已同步）
 
 请以 JSON 格式返回评估结果：
 {

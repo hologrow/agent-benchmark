@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Markdown } from "@/components/ui/markdown";
 import {
   Dialog,
   DialogContent,
@@ -633,8 +634,8 @@ export default function BenchmarkPage() {
                     {result.evaluation_report && (
                       <div>
                         <h4 className="font-semibold mb-2">评估报告</h4>
-                        <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap">
-                          {result.evaluation_report}
+                        <div className="bg-muted p-3 rounded-md">
+                          <Markdown content={result.evaluation_report} />
                         </div>
                       </div>
                     )}

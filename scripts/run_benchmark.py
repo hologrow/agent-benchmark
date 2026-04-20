@@ -405,14 +405,9 @@ def run_benchmark(execution_id: int):
         print(f"\nBenchmark 完成!")
         print(f"总计: {len(test_tasks)}, 成功: {completed_count}, 失败: {failed_count}")
 
-        # 注意: Langfuse Trace 同步现在由 Next.js 服务处理
-        # 在启动评估时，Next.js 会先同步 traces，然后再进行评估
-
-        # 触发评估
-        if execution.get('evaluator_id'):
-            print(f"\n开始评估...")
-            evaluator_script = Path(__file__).parent / 'run_evaluator.py'
-            subprocess.run(['uv', 'run', 'python3', str(evaluator_script), str(execution_id)])
+        # 注意: Langfuse Trace 同步和评估现在由 Next.js 服务处理
+        # 在 benchmark 执行完成后，Next.js 会先同步 traces，然后再触发评估
+        # 这里不再直接触发评估，以避免 trace 未同步就进行评估
 
     except Exception as e:
         print(f"执行出错: {e}")

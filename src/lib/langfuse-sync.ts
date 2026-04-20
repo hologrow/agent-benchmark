@@ -48,7 +48,7 @@ async function searchTraceByMagicCode(
   client: LangfuseClient,
   fromTime: Date,
   toTime: Date,
-): Promise<string | null> {
+): Promise<{ traceId: string; traceContent: string } | null> {
   try {
     const fromTimeStr = fromTime.toISOString();
     const toTimeStr = toTime.toISOString();
@@ -67,30 +67,15 @@ async function searchTraceByMagicCode(
       const inputStr = JSON.stringify(trace.input || "");
       if (inputStr.includes(magicCode)) {
         console.log(`[LangfuseSync] 找到匹配 trace: ${trace.id}`);
-        return trace.id;
+        const traceContent = await fetchTraceContent(trace.id, client);
+        return { traceId: trace.id, traceContent };
       }
 
       const outputStr = JSON.stringify(trace.output || "");
       if (outputStr.includes(magicCode)) {
         console.log(`[LangfuseSync] 找到匹配 trace: ${trace.id}`);
-        return trace.id;
-      }
-    }
-
-    // 如果没有找到，尝试获取 observations
-    const observations = await client.api.observations.getMany({
-      fromStartTime: fromTimeStr,
-      toStartTime: toTimeStr,
-      limit: 100,
-    });
-
-    for (const obs of observations.data) {
-      const inputStr = JSON.stringify(obs.input || "");
-      if (inputStr.includes(magicCode)) {
-        console.log(
-          `[LangfuseSync] 找到匹配 observation, trace_id: ${obs.traceId}`,
-        );
-        return obs.traceId || null;
+        const traceContent = await fetchTraceContent(trace.id, client);
+        return { traceId: trace.id, traceContent };
       }
     }
 
@@ -99,6 +84,80 @@ async function searchTraceByMagicCode(
   } catch (error) {
     console.error("[LangfuseSync] 搜索 trace 失败:", error);
     return null;
+  }
+}
+
+/**
+ * 获取 trace 完整内容
+ */
+async function fetchTraceContent(
+  traceId: string,
+  client: LangfuseClient,
+): Promise<string> {
+  try {
+    // 获取 trace 详情（包含 observations）
+    const trace = await client.api.trace.get(traceId);
+
+    // 构建 trace 内容
+    const content: string[] = [];
+
+    // 添加 observations（执行链路）
+    const rawobservations = ((trace as { observations?: unknown[] })
+      .observations || []) as {
+      id?: string;
+      name?: string;
+      type?: string;
+      input?: unknown;
+      output?: unknown;
+      startTime?: string;
+      endTime?: string;
+    }[];
+
+    const observations = rawobservations.filter((item) => {
+      //  "GENERATION", "SPAN", "EVENT", "AGENT", "TOOL", "CHAIN", "RETRIEVER", "EVALUATOR", "EMBEDDING", "GUARDRAIL"
+      // 只保留tool call
+      return item.type === "TOOL";
+    });
+
+    if (observations.length > 0) {
+      for (let i = 0; i < observations.length; i++) {
+        const obs = observations[i];
+
+        content.push(
+          `\nStep ${i + 1} [${obs.type || "N/A"}]: ${obs.name || "N/A"}`,
+        );
+        if (obs.input) {
+          const inputStr =
+            typeof obs.input === "object"
+              ? JSON.stringify(obs.input, null, 2)
+              : String(obs.input);
+          content.push(
+            `  Input:\n${inputStr
+              .split("\n")
+              .map((l) => "    " + l)
+              .join("\n")}`,
+          );
+        }
+        if (obs.output) {
+          const outputStr =
+            typeof obs.output === "object"
+              ? JSON.stringify(obs.output, null, 2)
+              : String(obs.output);
+          content.push(
+            `  Output:\n${outputStr
+              .split("\n")
+              .map((l) => "    " + l)
+              .join("\n")}`,
+          );
+        }
+      }
+      content.push("");
+    }
+
+    return content.join("\n");
+  } catch (error) {
+    console.error(`[LangfuseSync] 获取 trace ${traceId} 内容失败:`, error);
+    return "";
   }
 }
 
@@ -129,21 +188,24 @@ async function syncSingleResult(
 
   console.log(`[LangfuseSync] [${resultId}] 同步中... Magic: ${magicCode}`);
 
-  const traceId = await searchTraceByMagicCode(
+  const traceResult = await searchTraceByMagicCode(
     magicCode,
     client,
     fromTime,
     toTime,
   );
 
-  if (traceId) {
+  if (traceResult) {
     try {
       createExecutionTrace({
         result_id: resultId,
-        trace_id: traceId,
+        trace_id: traceResult.traceId,
         magic_code: magicCode,
+        trace_content: traceResult.traceContent,
       });
-      console.log(`[LangfuseSync] [${resultId}] 同步成功: ${traceId}`);
+      console.log(
+        `[LangfuseSync] [${resultId}] 同步成功: ${traceResult.traceId}, 内容长度: ${traceResult.traceContent.length}`,
+      );
       return true;
     } catch (error) {
       console.error(`[LangfuseSync] [${resultId}] 保存 trace 失败:`, error);

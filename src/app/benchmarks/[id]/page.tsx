@@ -12,6 +12,7 @@ import {
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Markdown } from "@/components/ui/markdown";
 import {
   ArrowLeft,
   Loader2,
@@ -21,6 +22,7 @@ import {
   RotateCcw,
   ExternalLink,
   RefreshCw,
+  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -47,10 +49,11 @@ interface BenchmarkExecution {
   id: number;
   benchmark_id: number;
   name: string | null;
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
+  pid: number | null;
 }
 
 interface BenchmarkResult {
@@ -58,7 +61,7 @@ interface BenchmarkResult {
   execution_id: number;
   agent_id: number;
   test_case_id: number;
-  status: "pending" | "running" | "completed" | "failed" | "timeout";
+  status: "pending" | "running" | "completed" | "failed" | "timeout" | "cancelled";
   actual_output: string | null;
   execution_steps: string | null; // 解析后的执行步骤
   execution_answer: string | null; // 解析后的执行答案
@@ -83,6 +86,7 @@ interface BenchmarkResult {
   forbidden_points_violated: string | null;
   trace_id: string | null;
   trace_synced_at: string | null;
+  trace_content: string | null;
 }
 
 interface ExecutionWithDetails extends BenchmarkExecution {
@@ -202,6 +206,7 @@ export default function BenchmarkDetailsPage() {
       failed: "destructive",
       timeout: "destructive",
       error: "destructive",
+      cancelled: "outline",
     };
     const labels: Record<string, string> = {
       pending: "待执行",
@@ -210,6 +215,7 @@ export default function BenchmarkDetailsPage() {
       failed: "失败",
       timeout: "超时",
       error: "错误",
+      cancelled: "已停止",
     };
     return (
       <Badge variant={variants[status] || "default"}>
@@ -345,6 +351,7 @@ function ExecutionDetails({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reevaluating, setReevaluating] = useState(false);
   const [syncingTraces, setSyncingTraces] = useState(false);
+  const [stopping, setStopping] = useState(false);
 
   const handleSyncTraces = async () => {
     setSyncingTraces(true);
@@ -394,6 +401,32 @@ function ExecutionDetails({
     }
   };
 
+  const handleStopExecution = async () => {
+    if (!confirm("确定要强制停止当前执行吗？")) return;
+
+    setStopping(true);
+    try {
+      const response = await fetch(`/api/executions/${execution.id}/stop`, {
+        method: "POST",
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(`执行已停止 (PID: ${data.pid}, 已取消 ${data.cancelledResultsCount} 个任务)`);
+        // 刷新页面以显示更新后的状态
+        window.location.reload();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "停止执行失败");
+      }
+    } catch (error) {
+      console.error("Error stopping execution:", error);
+      toast.error("停止执行失败");
+    } finally {
+      setStopping(false);
+    }
+  };
+
   const completedCount = execution.results.filter(
     (r) => r.status === "completed",
   ).length;
@@ -418,6 +451,7 @@ function ExecutionDetails({
       failed: "destructive",
       timeout: "destructive",
       error: "destructive",
+      cancelled: "outline",
     };
     const labels: Record<string, string> = {
       pending: "待执行",
@@ -426,6 +460,7 @@ function ExecutionDetails({
       failed: "失败",
       timeout: "超时",
       error: "错误",
+      cancelled: "已停止",
     };
     return (
       <Badge variant={variants[status] || "default"}>
@@ -511,6 +546,25 @@ function ExecutionDetails({
         </div>
       </div>
       <div className="flex items-center gap-2">
+        {execution.status === "running" && (
+          <Button
+            variant="destructive"
+            onClick={handleStopExecution}
+            disabled={stopping}
+          >
+            {stopping ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                停止中...
+              </>
+            ) : (
+              <>
+                <Square className="h-4 w-4 mr-2" />
+                强制停止
+              </>
+            )}
+          </Button>
+        )}
         {execution.status === "completed" && (
           <Button
             variant="outline"
@@ -704,17 +758,29 @@ function ExecutionDetails({
                 </div>
               </div>
 
-              {/* 执行步骤（如果有） */}
-              {selectedResult.execution_steps && (
-                <div>
-                  <h4 className="font-semibold mb-1 text-sm text-gray-500">
-                    执行步骤
-                  </h4>
-                  <div className="bg-gray-50 p-3 rounded-md text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto text-gray-600 font-mono">
-                    {selectedResult.execution_steps}
+              {/* 执行步骤和 Trace（并排显示） */}
+              <div className="grid grid-cols-2 gap-4">
+                {selectedResult.execution_steps && (
+                  <div>
+                    <h4 className="font-semibold mb-1 text-sm text-gray-500">
+                      执行步骤
+                    </h4>
+                    <div className="bg-gray-50 p-3 rounded-md text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto text-gray-600 font-mono">
+                      {selectedResult.execution_steps}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+                {selectedResult.trace_content && (
+                  <div>
+                    <h4 className="font-semibold mb-1 text-sm text-green-600">
+                      Trace
+                    </h4>
+                    <div className="bg-green-50 p-3 rounded-md text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto text-green-800 font-mono">
+                      {selectedResult.trace_content}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* 错误信息 */}
               {selectedResult.error_message && (
@@ -770,8 +836,8 @@ function ExecutionDetails({
               {selectedResult.evaluation_report && (
                 <div>
                   <h4 className="font-semibold mb-2">评估报告</h4>
-                  <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap">
-                    {selectedResult.evaluation_report}
+                  <div className="bg-muted p-3 rounded-md">
+                    <Markdown content={selectedResult.evaluation_report} />
                   </div>
                 </div>
               )}

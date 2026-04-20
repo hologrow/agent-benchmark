@@ -113,19 +113,38 @@ export async function POST(
       logStream.write(output);
     });
 
-    // 进程结束时关闭日志流并自动同步 Langfuse Traces
+    // 进程结束时关闭日志流并自动同步 Langfuse Traces，然后触发评估
     pythonProcess.on('close', async (code) => {
       const message = `\n[Benchmark ${execution.id}] 进程退出，退出码: ${code}\n`;
       console.log(message);
       logStream.write(message);
       logStream.end();
 
-      // 自动同步 Langfuse Traces
+      // 自动同步 Langfuse Traces 并触发评估
       if (code === 0) {
         console.log(`[Benchmark ${execution.id}] 执行成功，开始自动同步 Langfuse Traces...`);
         try {
           const syncResult = await syncExecutionTraces(execution.id);
           console.log(`[Benchmark ${execution.id}] Trace 同步完成:`, syncResult);
+
+          // 检查是否配置了评估器，如果配置了则触发评估
+          if (benchmark.evaluator_id) {
+            console.log(`[Benchmark ${execution.id}] 准备触发评估...`);
+            try {
+              const evalResponse = await fetch(`http://localhost:3000/api/executions/${execution.id}/evaluate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+              });
+              if (evalResponse.ok) {
+                console.log(`[Benchmark ${execution.id}] 评估已启动`);
+              } else {
+                const errorData = await evalResponse.json();
+                console.error(`[Benchmark ${execution.id}] 评估启动失败:`, errorData);
+              }
+            } catch (evalError) {
+              console.error(`[Benchmark ${execution.id}] 触发评估失败:`, evalError);
+            }
+          }
         } catch (syncError) {
           console.error(`[Benchmark ${execution.id}] Trace 同步失败:`, syncError);
         }

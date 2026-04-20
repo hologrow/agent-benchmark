@@ -481,7 +481,7 @@ export function EvaluatorManagement() {
                           可用变量：agent_name, test_id, test_case_name, input,
                           expected_output, actual_output, execution_answer,
                           execution_steps, key_points, forbidden_points, how,
-                          execution_time_ms
+                          execution_time_ms, trace
                         </p>
                       </div>
                     </FormDescription>
