@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { spawn } from 'child_process';
 import { getExecutionById, updateExecution } from '@/lib/db';
+import { syncExecutionTraces } from '@/lib/langfuse-sync';
 import { join } from 'path';
 
 // POST /api/executions/:id/evaluate - 启动评估任务
@@ -27,6 +28,11 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // 首先同步 Langfuse Traces（插件形式）
+    console.log(`[Evaluate] Execution ${executionId}: 开始同步 Langfuse Traces...`);
+    const syncResult = await syncExecutionTraces(executionId);
+    console.log(`[Evaluate] Execution ${executionId}: Trace 同步完成`, syncResult);
 
     // Update evaluation status to running
     updateExecution(executionId, { evaluation_status: 'running' });
@@ -69,7 +75,8 @@ export async function POST(
       success: true,
       message: 'Evaluation started',
       execution_id: executionId,
-      log_file: logFile
+      log_file: logFile,
+      trace_sync: syncResult
     });
   } catch (error) {
     console.error('Error starting evaluation:', error);

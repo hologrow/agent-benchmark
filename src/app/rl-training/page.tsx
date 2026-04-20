@@ -1,31 +1,31 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from "react";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   Play,
   Pause,
@@ -40,8 +40,8 @@ import {
   Terminal,
   Pencil,
   Settings,
-} from 'lucide-react';
-import { toast } from 'sonner';
+} from "lucide-react";
+import { toast } from "sonner";
 
 interface Model {
   id: number;
@@ -58,7 +58,7 @@ interface Agent {
 }
 
 interface Message {
-  role: 'teacher' | 'student' | 'system';
+  role: "teacher" | "student" | "system";
   content: string;
   round: number;
   timestamp: string;
@@ -75,7 +75,7 @@ interface TrainingSession {
   teacherModelId: number;
   studentAgentId: number;
   messages: Message[];
-  status: 'idle' | 'running' | 'paused' | 'completed';
+  status: "idle" | "running" | "paused" | "completed";
   currentRound: number;
   maxRounds: number;
   createdAt: string;
@@ -109,27 +109,31 @@ export default function RLTrainingPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
-  const [activeSession, setActiveSession] = useState<TrainingSession | null>(null);
+  const [activeSession, setActiveSession] = useState<TrainingSession | null>(
+    null,
+  );
   const [isTraining, setIsTraining] = useState(false);
   const [showNewSessionDialog, setShowNewSessionDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [editingSession, setEditingSession] = useState<TrainingSession | null>(null);
+  const [editingSession, setEditingSession] = useState<TrainingSession | null>(
+    null,
+  );
 
   // New session form
   const [newSessionForm, setNewSessionForm] = useState({
-    task: '',
-    teacherModelId: '',
-    studentAgentId: '',
-    maxRounds: '10',
+    task: "",
+    teacherModelId: "",
+    studentAgentId: "",
+    maxRounds: "10",
     systemPrompt: defaultSystemPrompt,
   });
 
   // Edit session form
   const [editForm, setEditForm] = useState({
-    task: '',
-    teacherModelId: '',
-    studentAgentId: '',
-    maxRounds: '10',
+    task: "",
+    teacherModelId: "",
+    studentAgentId: "",
+    maxRounds: "10",
     systemPrompt: defaultSystemPrompt,
   });
 
@@ -142,15 +146,15 @@ export default function RLTrainingPage() {
 
   useEffect(() => {
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [activeSession?.messages]);
 
   const fetchData = async () => {
     try {
       const [modelsRes, agentsRes] = await Promise.all([
-        fetch('/api/models'),
-        fetch('/api/agents'),
+        fetch("/api/models"),
+        fetch("/api/agents"),
       ]);
 
       const modelsData = await modelsRes.json();
@@ -159,36 +163,39 @@ export default function RLTrainingPage() {
       setModels(modelsData.models || []);
       setAgents(agentsData.agents || []);
     } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('获取数据失败');
+      console.error("Error fetching data:", error);
+      toast.error("获取数据失败");
     } finally {
       setLoading(false);
     }
   };
 
   const loadSavedSessions = () => {
-    const saved = localStorage.getItem('rl-training-sessions');
+    const saved = localStorage.getItem("rl-training-sessions");
     if (saved) {
       try {
         setSessions(JSON.parse(saved));
       } catch {
-        console.error('Failed to parse saved sessions');
+        console.error("Failed to parse saved sessions");
       }
     }
   };
 
   const saveSessions = (updatedSessions: TrainingSession[]) => {
-    localStorage.setItem('rl-training-sessions', JSON.stringify(updatedSessions));
+    localStorage.setItem(
+      "rl-training-sessions",
+      JSON.stringify(updatedSessions),
+    );
     setSessions(updatedSessions);
   };
 
   const createNewSession = () => {
     if (!newSessionForm.task.trim()) {
-      toast.error('请输入训练任务');
+      toast.error("请输入训练任务");
       return;
     }
     if (!newSessionForm.teacherModelId || !newSessionForm.studentAgentId) {
-      toast.error('请选择 Teacher 模型和 Student Agent');
+      toast.error("请选择 Teacher 模型和 Student Agent");
       return;
     }
 
@@ -199,13 +206,13 @@ export default function RLTrainingPage() {
       studentAgentId: parseInt(newSessionForm.studentAgentId),
       messages: [
         {
-          role: 'system',
+          role: "system",
           content: newSessionForm.systemPrompt,
           round: 0,
           timestamp: new Date().toISOString(),
         },
       ],
-      status: 'idle',
+      status: "idle",
       currentRound: 0,
       maxRounds: parseInt(newSessionForm.maxRounds) || 10,
       createdAt: new Date().toISOString(),
@@ -217,15 +224,15 @@ export default function RLTrainingPage() {
     setActiveSession(newSession);
     setShowNewSessionDialog(false);
     resetNewForm();
-    toast.success('训练会话已创建');
+    toast.success("训练会话已创建");
   };
 
   const resetNewForm = () => {
     setNewSessionForm({
-      task: '',
-      teacherModelId: '',
-      studentAgentId: '',
-      maxRounds: '10',
+      task: "",
+      teacherModelId: "",
+      studentAgentId: "",
+      maxRounds: "10",
       systemPrompt: defaultSystemPrompt,
     });
   };
@@ -247,11 +254,11 @@ export default function RLTrainingPage() {
     if (!editingSession) return;
 
     if (!editForm.task.trim()) {
-      toast.error('请输入训练任务');
+      toast.error("请输入训练任务");
       return;
     }
     if (!editForm.teacherModelId || !editForm.studentAgentId) {
-      toast.error('请选择 Teacher 模型和 Student Agent');
+      toast.error("请选择 Teacher 模型和 Student Agent");
       return;
     }
 
@@ -264,14 +271,12 @@ export default function RLTrainingPage() {
       systemPrompt: editForm.systemPrompt,
       // Update system message if it exists
       messages: editingSession.messages.map((m) =>
-        m.role === 'system'
-          ? { ...m, content: editForm.systemPrompt }
-          : m
+        m.role === "system" ? { ...m, content: editForm.systemPrompt } : m,
       ),
     };
 
     const updatedSessions = sessions.map((s) =>
-      s.id === editingSession.id ? updatedSession : s
+      s.id === editingSession.id ? updatedSession : s,
     );
     saveSessions(updatedSessions);
 
@@ -282,21 +287,21 @@ export default function RLTrainingPage() {
 
     setShowEditDialog(false);
     setEditingSession(null);
-    toast.success('训练会话配置已更新');
+    toast.success("训练会话配置已更新");
   };
 
   const startTraining = async () => {
     if (!activeSession) return;
 
     setIsTraining(true);
-    const updatedSession = { ...activeSession, status: 'running' as const };
+    const updatedSession = { ...activeSession, status: "running" as const };
     updateSession(updatedSession);
 
     try {
       await runTrainingRound(updatedSession);
     } catch (error) {
-      console.error('Training error:', error);
-      toast.error('训练过程出错');
+      console.error("Training error:", error);
+      toast.error("训练过程出错");
       setIsTraining(false);
     }
   };
@@ -306,28 +311,28 @@ export default function RLTrainingPage() {
     const studentAgent = agents.find((a) => a.id === session.studentAgentId);
 
     if (!teacherModel) {
-      toast.error('Teacher 模型配置错误');
+      toast.error("Teacher 模型配置错误");
       return;
     }
     if (!studentAgent) {
-      toast.error('Student Agent 配置错误');
+      toast.error("Student Agent 配置错误");
       return;
     }
 
     const currentRound = session.currentRound + 1;
     if (currentRound > session.maxRounds) {
-      const completedSession = { ...session, status: 'completed' as const };
+      const completedSession = { ...session, status: "completed" as const };
       updateSession(completedSession);
       setIsTraining(false);
-      toast.success('训练完成 - 达到最大轮数');
+      toast.success("训练完成 - 达到最大轮数");
       return;
     }
 
     // Build conversation history - map teacher to user, student to assistant
     const conversationHistory = session.messages
-      .filter((m) => m.role !== 'system')
+      .filter((m) => m.role !== "system")
       .map((m) => ({
-        role: m.role === 'teacher' ? 'user' : 'assistant',
+        role: m.role === "teacher" ? "user" : "assistant",
         content: m.content,
       }));
 
@@ -335,21 +340,21 @@ export default function RLTrainingPage() {
       prev
         ? {
             ...prev,
-            status: 'running',
+            status: "running",
             currentRound,
           }
-        : null
+        : null,
     );
 
     // Step 1: Teacher generates instruction
-    const teacherResponse = await fetch('/api/rl-training', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const teacherResponse = await fetch("/api/rl-training", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         modelId: teacherModel.id,
         messages: [
           {
-            role: 'system',
+            role: "system",
             content: `You are the Teacher model training an Agent. You communicate directly with the Agent.
 
 Round: ${currentRound}/${session.maxRounds}
@@ -370,18 +375,18 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
     });
 
     if (!teacherResponse.ok) {
-      throw new Error('Teacher model request failed');
+      throw new Error("Teacher model request failed");
     }
 
     const teacherData = await teacherResponse.json();
 
     // Check if training should end
     if (
-      teacherData.content.toLowerCase().includes('训练完成') ||
-      teacherData.content.toLowerCase().includes('training complete')
+      teacherData.content.toLowerCase().includes("训练完成") ||
+      teacherData.content.toLowerCase().includes("training complete")
     ) {
       const teacherMessage: Message = {
-        role: 'teacher',
+        role: "teacher",
         content: teacherData.content,
         round: currentRound,
         timestamp: new Date().toISOString(),
@@ -389,17 +394,17 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
       const completedSession = {
         ...session,
         messages: [...session.messages, teacherMessage],
-        status: 'completed' as const,
+        status: "completed" as const,
         currentRound,
       };
       updateSession(completedSession);
       setIsTraining(false);
-      toast.success('训练完成 - Teacher 认为 Agent 已掌握任务');
+      toast.success("训练完成 - Teacher 认为 Agent 已掌握任务");
       return;
     }
 
     const teacherMessage: Message = {
-      role: 'teacher',
+      role: "teacher",
       content: teacherData.content,
       round: currentRound,
       timestamp: new Date().toISOString(),
@@ -412,14 +417,19 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
     };
     updateSession(updatedSession);
 
-    console.log(`[RL Training] Round ${currentRound} - Teacher message:`, teacherData.content);
-    console.log(`[RL Training] Round ${currentRound} - Sending to Agent ${studentAgent.id} (${studentAgent.name})`);
+    console.log(
+      `[RL Training] Round ${currentRound} - Teacher message:`,
+      teacherData.content,
+    );
+    console.log(
+      `[RL Training] Round ${currentRound} - Sending to Agent ${studentAgent.id} (${studentAgent.name})`,
+    );
 
     // Step 2: Agent executes the instruction
     const startTime = Date.now();
-    const agentResponse = await fetch('/api/rl-training/agent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const agentResponse = await fetch("/api/rl-training/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         agentId: studentAgent.id,
         prompt: teacherData.content,
@@ -427,28 +437,31 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
       }),
     });
 
-    console.log(`[RL Training] Round ${currentRound} - Agent response status:`, agentResponse.status);
+    console.log(
+      `[RL Training] Round ${currentRound} - Agent response status:`,
+      agentResponse.status,
+    );
 
     const executionTime = Date.now() - startTime;
     let agentContent: string;
     let isError = false;
-    let metadata: Message['metadata'] = {
+    let metadata: Message["metadata"] = {
       command: studentAgent.command,
       executionTime,
     };
 
     if (!agentResponse.ok) {
       const errorData = await agentResponse.json();
-      agentContent = `执行错误: ${errorData.error || 'Unknown error'}`;
+      agentContent = `执行错误: ${errorData.error || "Unknown error"}`;
       isError = true;
     } else {
       const agentData = await agentResponse.json();
-      agentContent = agentData.output || 'Agent 没有输出';
+      agentContent = agentData.output || "Agent 没有输出";
       metadata.executionTime = agentData.executionTime;
     }
 
     const studentMessage: Message = {
-      role: 'student',
+      role: "student",
       content: agentContent,
       round: currentRound,
       timestamp: new Date().toISOString(),
@@ -463,7 +476,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
     updateSession(updatedSession);
 
     // Continue to next round if training is still running
-    if (updatedSession.status === 'running') {
+    if (updatedSession.status === "running") {
       await new Promise((resolve) => setTimeout(resolve, 500));
       await runTrainingRound(updatedSession);
     }
@@ -471,17 +484,17 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
 
   const pauseTraining = () => {
     if (activeSession) {
-      const pausedSession = { ...activeSession, status: 'paused' as const };
+      const pausedSession = { ...activeSession, status: "paused" as const };
       updateSession(pausedSession);
       setIsTraining(false);
-      toast.info('训练已暂停');
+      toast.info("训练已暂停");
     }
   };
 
   const continueTraining = () => {
     if (activeSession) {
       setIsTraining(true);
-      const resumedSession = { ...activeSession, status: 'running' as const };
+      const resumedSession = { ...activeSession, status: "running" as const };
       updateSession(resumedSession);
       runTrainingRound(resumedSession);
     }
@@ -489,33 +502,38 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
 
   const updateSession = (session: TrainingSession) => {
     setActiveSession(session);
-    const updatedSessions = sessions.map((s) => (s.id === session.id ? session : s));
+    const updatedSessions = sessions.map((s) =>
+      s.id === session.id ? session : s,
+    );
     saveSessions(updatedSessions);
   };
 
   const resetSession = () => {
-    if (activeSession && confirm('确定要重置这个训练会话吗？所有进度将丢失。')) {
+    if (
+      activeSession &&
+      confirm("确定要重置这个训练会话吗？所有进度将丢失。")
+    ) {
       const resetSession: TrainingSession = {
         ...activeSession,
-        messages: activeSession.messages.filter((m) => m.role === 'system'),
-        status: 'idle',
+        messages: activeSession.messages.filter((m) => m.role === "system"),
+        status: "idle",
         currentRound: 0,
       };
       updateSession(resetSession);
       setIsTraining(false);
-      toast.success('训练会话已重置');
+      toast.success("训练会话已重置");
     }
   };
 
   const deleteSession = (sessionId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (confirm('确定要删除这个训练会话吗？')) {
+    if (confirm("确定要删除这个训练会话吗？")) {
       const updatedSessions = sessions.filter((s) => s.id !== sessionId);
       saveSessions(updatedSessions);
       if (activeSession?.id === sessionId) {
         setActiveSession(null);
       }
-      toast.success('训练会话已删除');
+      toast.success("训练会话已删除");
     }
   };
 
@@ -527,12 +545,12 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
     return agents.find((a) => a.id === agentId)?.name || `Agent #${agentId}`;
   };
 
-  const getStatusBadge = (status: TrainingSession['status']) => {
+  const getStatusBadge = (status: TrainingSession["status"]) => {
     const config = {
-      idle: { label: '待开始', className: 'bg-gray-500' },
-      running: { label: '训练中', className: 'bg-blue-500 animate-pulse' },
-      paused: { label: '已暂停', className: 'bg-yellow-500' },
-      completed: { label: '已完成', className: 'bg-green-500' },
+      idle: { label: "待开始", className: "bg-gray-500" },
+      running: { label: "训练中", className: "bg-blue-500 animate-pulse" },
+      paused: { label: "已暂停", className: "bg-yellow-500" },
+      completed: { label: "已完成", className: "bg-green-500" },
     };
     const { label, className } = config[status];
     return <Badge className={className}>{label}</Badge>;
@@ -542,12 +560,16 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">RL-强化训练</h1>
+          <h1 className="text-3xl font-bold">强化训练</h1>
           <p className="text-muted-foreground mt-2">
-            Teacher 模型与 Student Agent 直接对话，通过指令-执行-反馈循环提升 Agent 能力
+            Teacher 模型与 Student Agent 直接对话，通过指令-执行-反馈循环提升
+            Agent 能力
           </p>
         </div>
-        <Button onClick={() => setShowNewSessionDialog(true)} disabled={loading}>
+        <Button
+          onClick={() => setShowNewSessionDialog(true)}
+          disabled={loading}
+        >
           <GraduationCap className="h-4 w-4 mr-2" />
           新建训练会话
         </Button>
@@ -584,8 +606,8 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                     key={session.id}
                     className={`p-3 rounded-lg border cursor-pointer transition-colors ${
                       activeSession?.id === session.id
-                        ? 'border-primary bg-primary/5'
-                        : 'hover:bg-muted'
+                        ? "border-primary bg-primary/5"
+                        : "hover:bg-muted"
                     }`}
                     onClick={() => setActiveSession(session)}
                   >
@@ -593,8 +615,8 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{session.task}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Teacher: {getModelName(session.teacherModelId)} · Agent:{' '}
-                          {getAgentName(session.studentAgentId)}
+                          Teacher: {getModelName(session.teacherModelId)} ·
+                          Agent: {getAgentName(session.studentAgentId)}
                         </p>
                         <div className="flex items-center gap-2 mt-2">
                           {getStatusBadge(session.status)}
@@ -637,28 +659,28 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>
-                  {activeSession ? '训练对话' : '选择或创建会话'}
+                  {activeSession ? "训练对话" : "选择或创建会话"}
                 </CardTitle>
                 {activeSession && (
                   <CardDescription>
-                    Teacher: {getModelName(activeSession.teacherModelId)} · Agent:{' '}
-                    {getAgentName(activeSession.studentAgentId)}
+                    Teacher: {getModelName(activeSession.teacherModelId)} ·
+                    Agent: {getAgentName(activeSession.studentAgentId)}
                   </CardDescription>
                 )}
               </div>
               {activeSession && (
                 <div className="flex items-center gap-2">
-                  {activeSession.status === 'running' ? (
+                  {activeSession.status === "running" ? (
                     <Button variant="outline" onClick={pauseTraining}>
                       <Pause className="h-4 w-4 mr-2" />
                       暂停
                     </Button>
-                  ) : activeSession.status === 'paused' ? (
+                  ) : activeSession.status === "paused" ? (
                     <Button onClick={continueTraining}>
                       <Play className="h-4 w-4 mr-2" />
                       继续
                     </Button>
-                  ) : activeSession.status === 'idle' ? (
+                  ) : activeSession.status === "idle" ? (
                     <Button onClick={startTraining}>
                       <Play className="h-4 w-4 mr-2" />
                       开始训练
@@ -677,7 +699,9 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
               <div className="text-center py-16 text-muted-foreground">
                 <MessageSquare className="h-16 w-16 mx-auto mb-4 opacity-50" />
                 <p>请从左侧选择一个训练会话</p>
-                <p className="text-sm mt-2">或点击&quot;新建训练会话&quot;开始</p>
+                <p className="text-sm mt-2">
+                  或点击&quot;新建训练会话&quot;开始
+                </p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -687,7 +711,8 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                     <div className="flex justify-between mb-1">
                       <span>训练进度</span>
                       <span>
-                        {activeSession.currentRound}/{activeSession.maxRounds} 轮
+                        {activeSession.currentRound}/{activeSession.maxRounds}{" "}
+                        轮
                       </span>
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -705,42 +730,50 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                 {/* Messages */}
                 <div className="border rounded-lg h-[500px] overflow-y-auto p-4 space-y-4 bg-muted/30">
                   {activeSession.messages
-                    .filter((m) => m.role !== 'system')
+                    .filter((m) => m.role !== "system")
                     .map((message, index) => (
                       <div
                         key={index}
                         className={`flex gap-3 ${
-                          message.role === 'teacher' ? 'flex-row' : 'flex-row-reverse'
+                          message.role === "teacher"
+                            ? "flex-row"
+                            : "flex-row-reverse"
                         }`}
                       >
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                            message.role === 'teacher'
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-secondary text-secondary-foreground'
+                            message.role === "teacher"
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-secondary text-secondary-foreground"
                           }`}
                         >
-                          {message.role === 'teacher' ? 'T' : 'A'}
+                          {message.role === "teacher" ? "T" : "A"}
                         </div>
                         <div
                           className={`max-w-[85%] rounded-lg p-3 ${
-                            message.role === 'teacher'
-                              ? 'bg-primary text-primary-foreground'
+                            message.role === "teacher"
+                              ? "bg-primary text-primary-foreground"
                               : message.isError
-                                ? 'bg-destructive/10 border border-destructive/30'
-                                : 'bg-card border'
+                                ? "bg-destructive/10 border border-destructive/30"
+                                : "bg-card border"
                           }`}
                         >
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-xs font-medium">
-                              {message.role === 'teacher' ? 'Teacher (指令)' : 'Agent (执行)'}
+                              {message.role === "teacher"
+                                ? "Teacher (指令)"
+                                : "Agent (执行)"}
                             </span>
                             <span className="text-xs opacity-70">
                               第{message.round}轮
                             </span>
                             {message.metadata?.executionTime && (
                               <span className="text-xs opacity-70">
-                                ({Math.round(message.metadata.executionTime / 1000)}s)
+                                (
+                                {Math.round(
+                                  message.metadata.executionTime / 1000,
+                                )}
+                                s)
                               </span>
                             )}
                           </div>
@@ -784,7 +817,10 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
       </div>
 
       {/* New Session Dialog */}
-      <Dialog open={showNewSessionDialog} onOpenChange={setShowNewSessionDialog}>
+      <Dialog
+        open={showNewSessionDialog}
+        onOpenChange={setShowNewSessionDialog}
+      >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>新建训练会话</DialogTitle>
@@ -814,7 +850,10 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                 <Select
                   value={newSessionForm.teacherModelId}
                   onValueChange={(value) =>
-                    setNewSessionForm({ ...newSessionForm, teacherModelId: value || '' })
+                    setNewSessionForm({
+                      ...newSessionForm,
+                      teacherModelId: value || "",
+                    })
                   }
                 >
                   <SelectTrigger>
@@ -841,7 +880,10 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                 <Select
                   value={newSessionForm.studentAgentId}
                   onValueChange={(value) =>
-                    setNewSessionForm({ ...newSessionForm, studentAgentId: value || '' })
+                    setNewSessionForm({
+                      ...newSessionForm,
+                      studentAgentId: value || "",
+                    })
                   }
                 >
                   <SelectTrigger>
@@ -869,7 +911,10 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                 max={50}
                 value={newSessionForm.maxRounds}
                 onChange={(e) =>
-                  setNewSessionForm({ ...newSessionForm, maxRounds: e.target.value })
+                  setNewSessionForm({
+                    ...newSessionForm,
+                    maxRounds: e.target.value,
+                  })
                 }
               />
               <p className="text-xs text-muted-foreground">
@@ -878,19 +923,27 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Teacher 系统提示词（可选）</label>
+              <label className="text-sm font-medium">
+                Teacher 系统提示词（可选）
+              </label>
               <Textarea
                 className="min-h-[150px] font-mono text-sm"
                 value={newSessionForm.systemPrompt}
                 onChange={(e) =>
-                  setNewSessionForm({ ...newSessionForm, systemPrompt: e.target.value })
+                  setNewSessionForm({
+                    ...newSessionForm,
+                    systemPrompt: e.target.value,
+                  })
                 }
               />
             </div>
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowNewSessionDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowNewSessionDialog(false)}
+            >
               取消
             </Button>
             <Button onClick={createNewSession}>创建会话</Button>
@@ -929,7 +982,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                 <Select
                   value={editForm.teacherModelId}
                   onValueChange={(value) =>
-                    setEditForm({ ...editForm, teacherModelId: value || '' })
+                    setEditForm({ ...editForm, teacherModelId: value || "" })
                   }
                 >
                   <SelectTrigger>
@@ -956,7 +1009,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                 <Select
                   value={editForm.studentAgentId}
                   onValueChange={(value) =>
-                    setEditForm({ ...editForm, studentAgentId: value || '' })
+                    setEditForm({ ...editForm, studentAgentId: value || "" })
                   }
                 >
                   <SelectTrigger>

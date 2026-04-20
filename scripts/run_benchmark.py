@@ -14,6 +14,7 @@ import os
 import json
 import sqlite3
 import shlex
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -21,6 +22,11 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 
 # 导入输出解析器
 from output_parser import parse_agent_output
+
+
+def generate_magic_code() -> str:
+    """生成唯一的 magic code 用于追踪 Langfuse trace"""
+    return f"BM-{uuid.uuid4().hex[:12].upper()}"
 
 # 数据库路径
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'benchmark.db')
@@ -163,19 +169,22 @@ def run_single_test(args: Dict) -> Dict:
     if not agent or not test_case:
         return {'error': 'Agent or test case not found'}
 
+    # 生成唯一的 magic code
+    magic_code = generate_magic_code()
+
     # 获取或创建结果记录
     result_id = get_result_id(execution_id, agent_id, test_case_id)
     if not result_id:
         cursor.execute(
-            'INSERT INTO benchmark_results (execution_id, agent_id, test_case_id, status, started_at) VALUES (?, ?, ?, ?, ?)',
-            (execution_id, agent_id, test_case_id, 'running', datetime.now().isoformat())
+            'INSERT INTO benchmark_results (execution_id, agent_id, test_case_id, status, started_at, magic_code) VALUES (?, ?, ?, ?, ?, ?)',
+            (execution_id, agent_id, test_case_id, 'running', datetime.now().isoformat(), magic_code)
         )
         conn.commit()
         result_id = cursor.lastrowid
     else:
         cursor.execute(
-            'UPDATE benchmark_results SET status = ?, started_at = ? WHERE id = ?',
-            ('running', datetime.now().isoformat(), result_id)
+            'UPDATE benchmark_results SET status = ?, started_at = ?, magic_code = ? WHERE id = ?',
+            ('running', datetime.now().isoformat(), magic_code, result_id)
         )
         conn.commit()
 
@@ -195,9 +204,14 @@ def run_single_test(args: Dict) -> Dict:
         'forbidden_points': json.dumps(test_case.get('forbidden_points', []), ensure_ascii=False),
         'test_id': test_case['test_id'],
         'test_name': test_case['name'],
+        'magic_code': magic_code,
         **run_config.get('variables', {})
     }
     prompt = parse_template(prompt_template, context)
+
+    # 如果 prompt_template 不包含 magic_code，自动在末尾添加
+    if '{{magic_code}}' not in prompt_template:
+        prompt = f"{prompt}\n\n[DEBUG: {magic_code}]"
 
     try:
         # 根据 agent_type 构建命令
@@ -272,7 +286,8 @@ def run_single_test(args: Dict) -> Dict:
         return {
             'result_id': result_id,
             'status': status,
-            'execution_time_ms': execution_time_ms
+            'execution_time_ms': execution_time_ms,
+            'magic_code': magic_code
         }
 
     except subprocess.TimeoutExpired:
@@ -291,7 +306,8 @@ def run_single_test(args: Dict) -> Dict:
         return {
             'result_id': result_id,
             'status': 'timeout',
-            'execution_time_ms': execution_time_ms
+            'execution_time_ms': execution_time_ms,
+            'magic_code': magic_code
         }
 
     except Exception as e:
@@ -309,7 +325,8 @@ def run_single_test(args: Dict) -> Dict:
         return {
             'result_id': result_id,
             'status': 'error',
-            'error': str(e)
+            'error': str(e),
+            'magic_code': magic_code
         }
 
 
@@ -387,6 +404,9 @@ def run_benchmark(execution_id: int):
 
         print(f"\nBenchmark 完成!")
         print(f"总计: {len(test_tasks)}, 成功: {completed_count}, 失败: {failed_count}")
+
+        # 注意: Langfuse Trace 同步现在由 Next.js 服务处理
+        # 在启动评估时，Next.js 会先同步 traces，然后再进行评估
 
         # 触发评估
         if execution.get('evaluator_id'):

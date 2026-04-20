@@ -9,6 +9,7 @@ import {
   getTestSetCaseIds,
   updateExecution
 } from '@/lib/db';
+import { syncExecutionTraces } from '@/lib/langfuse-sync';
 
 // POST /api/benchmarks/:id/start - 启动 benchmark 执行
 export async function POST(
@@ -64,7 +65,8 @@ export async function POST(
           error_message: null,
           evaluation_error: null,
           started_at: null,
-          completed_at: null
+          completed_at: null,
+          magic_code: null
         });
       }
     }
@@ -111,12 +113,23 @@ export async function POST(
       logStream.write(output);
     });
 
-    // 进程结束时关闭日志流
-    pythonProcess.on('close', (code) => {
+    // 进程结束时关闭日志流并自动同步 Langfuse Traces
+    pythonProcess.on('close', async (code) => {
       const message = `\n[Benchmark ${execution.id}] 进程退出，退出码: ${code}\n`;
       console.log(message);
       logStream.write(message);
       logStream.end();
+
+      // 自动同步 Langfuse Traces
+      if (code === 0) {
+        console.log(`[Benchmark ${execution.id}] 执行成功，开始自动同步 Langfuse Traces...`);
+        try {
+          const syncResult = await syncExecutionTraces(execution.id);
+          console.log(`[Benchmark ${execution.id}] Trace 同步完成:`, syncResult);
+        } catch (syncError) {
+          console.error(`[Benchmark ${execution.id}] Trace 同步失败:`, syncError);
+        }
+      }
     });
 
     pythonProcess.unref();

@@ -514,12 +514,13 @@ export interface Result {
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
+  magic_code: string | null;
 }
 
 export function createResult(result: Omit<Result, 'id' | 'created_at'>): Result {
   const db = getDatabase();
   const stmt = db.prepare(
-    'INSERT INTO benchmark_results (execution_id, agent_id, test_case_id, status, actual_output, output_file, execution_time_ms, error_message, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO benchmark_results (execution_id, agent_id, test_case_id, status, actual_output, output_file, execution_time_ms, error_message, started_at, completed_at, magic_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
   );
   const res = stmt.run(
     result.execution_id,
@@ -531,7 +532,8 @@ export function createResult(result: Omit<Result, 'id' | 'created_at'>): Result 
     result.execution_time_ms,
     result.error_message,
     result.started_at,
-    result.completed_at
+    result.completed_at,
+    result.magic_code ?? null
   );
 
   return db.prepare('SELECT * FROM benchmark_results WHERE id = ?').get(res.lastInsertRowid) as Result;
@@ -559,6 +561,7 @@ export function getExecutionDetails(executionId: number) {
       br.started_at,
       br.completed_at,
       br.created_at,
+      br.magic_code,
       a.name as agent_name,
       tc.test_id,
       tc.name as test_case_name,
@@ -569,11 +572,14 @@ export function getExecutionDetails(executionId: number) {
       e.score,
       e.report as evaluation_report,
       e.key_points_met,
-      e.forbidden_points_violated
+      e.forbidden_points_violated,
+      et.trace_id,
+      et.synced_at as trace_synced_at
     FROM benchmark_results br
     JOIN agents a ON br.agent_id = a.id
     JOIN test_cases tc ON br.test_case_id = tc.id
     LEFT JOIN evaluations e ON e.result_id = br.id
+    LEFT JOIN execution_traces et ON et.result_id = br.id
     WHERE br.execution_id = ?
     ORDER BY br.id
   `).all(executionId);
@@ -830,4 +836,117 @@ export function getAllBenchmarksV2(): BenchmarkV2[] {
   const benchmarks = db.prepare('SELECT * FROM benchmarks ORDER BY created_at DESC').all() as Benchmark[];
 
   return benchmarks.map(b => getBenchmarkWithTestSet(b.id)!).filter(Boolean);
+}
+
+// ==================== Integration 相关操作 ====================
+
+export interface Integration {
+  id: number;
+  name: string;
+  type: string;
+  enabled: number;
+  config: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getAllIntegrations(): Integration[] {
+  const db = getDatabase();
+  return db.prepare('SELECT * FROM integrations ORDER BY created_at DESC').all() as Integration[];
+}
+
+export function getIntegrationByType(type: string): Integration | undefined {
+  const db = getDatabase();
+  return db.prepare('SELECT * FROM integrations WHERE type = ?').get(type) as Integration | undefined;
+}
+
+export function createIntegration(integration: Omit<Integration, 'id' | 'created_at' | 'updated_at'>): Integration {
+  const db = getDatabase();
+  const result = db.prepare(
+    'INSERT INTO integrations (name, type, enabled, config) VALUES (?, ?, ?, ?)'
+  ).run(integration.name, integration.type, integration.enabled, integration.config);
+
+  return db.prepare('SELECT * FROM integrations WHERE id = ?').get(result.lastInsertRowid) as Integration;
+}
+
+export function updateIntegration(id: number, integration: Partial<Omit<Integration, 'id' | 'created_at' | 'updated_at'>>): Integration {
+  const db = getDatabase();
+  const sets: string[] = [];
+  const values: unknown[] = [];
+
+  if (integration.name !== undefined) { sets.push('name = ?'); values.push(integration.name); }
+  if (integration.type !== undefined) { sets.push('type = ?'); values.push(integration.type); }
+  if (integration.enabled !== undefined) { sets.push('enabled = ?'); values.push(integration.enabled); }
+  if (integration.config !== undefined) { sets.push('config = ?'); values.push(integration.config); }
+  sets.push('updated_at = CURRENT_TIMESTAMP');
+  values.push(id);
+
+  db.prepare(`UPDATE integrations SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+  return db.prepare('SELECT * FROM integrations WHERE id = ?').get(id) as Integration;
+}
+
+export function upsertIntegrationByType(
+  type: string,
+  integration: Omit<Integration, 'id' | 'created_at' | 'updated_at' | 'type'>
+): Integration {
+  const existing = getIntegrationByType(type);
+
+  if (existing) {
+    return updateIntegration(existing.id, { ...integration, type });
+  } else {
+    return createIntegration({ ...integration, type });
+  }
+}
+
+export function deleteIntegration(id: number): void {
+  const db = getDatabase();
+  db.prepare('DELETE FROM integrations WHERE id = ?').run(id);
+}
+
+// ==================== Execution Traces 相关操作 ====================
+
+export interface ExecutionTrace {
+  id: number;
+  result_id: number;
+  trace_id: string;
+  magic_code: string;
+  synced_at: string;
+  created_at: string;
+}
+
+export function createExecutionTrace(trace: Omit<ExecutionTrace, 'id' | 'synced_at' | 'created_at'>): ExecutionTrace {
+  const db = getDatabase();
+  const result = db.prepare(
+    'INSERT INTO execution_traces (result_id, trace_id, magic_code) VALUES (?, ?, ?)'
+  ).run(trace.result_id, trace.trace_id, trace.magic_code);
+
+  return db.prepare('SELECT * FROM execution_traces WHERE id = ?').get(result.lastInsertRowid) as ExecutionTrace;
+}
+
+export function getExecutionTraceByResultId(result_id: number): ExecutionTrace | undefined {
+  const db = getDatabase();
+  return db.prepare('SELECT * FROM execution_traces WHERE result_id = ?').get(result_id) as ExecutionTrace | undefined;
+}
+
+export function getExecutionTraceByMagicCode(magic_code: string): ExecutionTrace | undefined {
+  const db = getDatabase();
+  return db.prepare('SELECT * FROM execution_traces WHERE magic_code = ?').get(magic_code) as ExecutionTrace | undefined;
+}
+
+export function getPendingTraceSyncResults(execution_id: number): Result[] {
+  const db = getDatabase();
+  return db.prepare(`
+    SELECT br.* FROM benchmark_results br
+    LEFT JOIN execution_traces et ON br.id = et.result_id
+    WHERE br.execution_id = ?
+      AND br.magic_code IS NOT NULL
+      AND br.status = 'completed'
+      AND et.id IS NULL
+    ORDER BY br.id
+  `).all(execution_id) as Result[];
+}
+
+export function updateExecutionTraceSyncTime(result_id: number): void {
+  const db = getDatabase();
+  db.prepare('UPDATE execution_traces SET synced_at = CURRENT_TIMESTAMP WHERE result_id = ?').run(result_id);
 }

@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Benchmark Runner",
+  title: "Agent Benchmark Runner",
   description: "AI Agent Benchmark Platform",
 };
 

@@ -9,17 +9,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   ArrowLeft,
   Loader2,
@@ -27,6 +19,8 @@ import {
   FileText,
   AlertCircle,
   RotateCcw,
+  ExternalLink,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -74,6 +68,7 @@ interface BenchmarkResult {
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
+  magic_code: string | null;
   agent_name: string;
   test_id: string;
   test_case_name: string;
@@ -86,6 +81,8 @@ interface BenchmarkResult {
   evaluation_error: string | null;
   key_points_met: string | null;
   forbidden_points_violated: string | null;
+  trace_id: string | null;
+  trace_synced_at: string | null;
 }
 
 interface ExecutionWithDetails extends BenchmarkExecution {
@@ -108,10 +105,26 @@ export default function BenchmarkDetailsPage() {
   const [selectedExecution, setSelectedExecution] =
     useState<ExecutionWithDetails | null>(null);
   const [activeTab, setActiveTab] = useState<string>("");
+  const [langfuseBaseUrl, setLangfuseBaseUrl] = useState<string>(
+    "https://cloud.langfuse.com",
+  );
 
   useEffect(() => {
     fetchBenchmark();
+    fetchLangfuseConfig();
   }, [benchmarkId]);
+
+  const fetchLangfuseConfig = async () => {
+    try {
+      const response = await fetch("/api/integrations/langfuse/config");
+      if (response.ok) {
+        const data = await response.json();
+        setLangfuseBaseUrl(data.baseUrl);
+      }
+    } catch (error) {
+      console.error("Error fetching Langfuse config:", error);
+    }
+  };
 
   const fetchBenchmark = async () => {
     try {
@@ -159,7 +172,6 @@ export default function BenchmarkDetailsPage() {
       });
 
       if (response.ok) {
-        const data = await response.json();
         toast.success("已开始新执行");
         // 刷新页面以显示新的执行记录
         fetchBenchmark();
@@ -270,64 +282,94 @@ export default function BenchmarkDetailsPage() {
           </CardContent>
         </Card>
       ) : (
-        <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>执行记录</CardTitle>
-                  <CardDescription>选择执行批次查看详情</CardDescription>
-                </div>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>执行记录</CardTitle>
+                <CardDescription>选择执行批次查看详情</CardDescription>
               </div>
-            </CardHeader>
-            <CardContent>
-              <TabsList className="mb-6 flex flex-wrap h-auto gap-2">
-                {benchmark.executions?.map((execution) => (
-                  <TabsTrigger
-                    key={execution.id}
-                    value={execution.id.toString()}
-                    className="px-4 py-2"
-                  >
-                    <div className="flex items-center gap-2">
-                      {execution.name || `执行 #${execution.id}`}
-                      {getStatusBadge(execution.status)}
-                    </div>
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-6 flex flex-wrap gap-2">
               {benchmark.executions?.map((execution) => (
-                <TabsContent
+                <button
                   key={execution.id}
-                  value={execution.id.toString()}
-                  className="mt-0"
+                  onClick={() => handleTabChange(execution.id.toString())}
+                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    activeTab === execution.id.toString()
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  }`}
                 >
-                  {selectedExecution?.id === execution.id ? (
-                    <ExecutionDetails
-                      execution={selectedExecution}
-                      onReevaluate={fetchBenchmark}
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center py-12">
-                      <Loader2 className="h-8 w-8 animate-spin" />
-                    </div>
-                  )}
-                </TabsContent>
+                  <span>{execution.name || `执行 #${execution.id}`}</span>
+                  <span className="text-xs opacity-80">
+                    {execution.created_at ? new Date(execution.created_at).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                  </span>
+                  {getStatusBadge(execution.status)}
+                </button>
               ))}
-            </CardContent>
-          </Card>
-        </Tabs>
+            </div>
+
+            {selectedExecution ? (
+              <ExecutionDetails
+                execution={selectedExecution}
+                onReevaluate={fetchBenchmark}
+                langfuseBaseUrl={langfuseBaseUrl}
+              />
+            ) : (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
     </div>
   );
 }
 
-function ExecutionDetails({ execution, onReevaluate }: { execution: ExecutionWithDetails; onReevaluate?: () => void }) {
+function ExecutionDetails({
+  execution,
+  onReevaluate,
+  langfuseBaseUrl,
+}: {
+  execution: ExecutionWithDetails;
+  onReevaluate?: () => void;
+  langfuseBaseUrl: string;
+}) {
   const [selectedResult, setSelectedResult] = useState<BenchmarkResult | null>(
     null,
   );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [reevaluating, setReevaluating] = useState(false);
+  const [syncingTraces, setSyncingTraces] = useState(false);
+
+  const handleSyncTraces = async () => {
+    setSyncingTraces(true);
+    try {
+      const response = await fetch("/api/traces/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ executionId: execution.id }),
+      });
+
+      if (response.ok) {
+        toast.success("Trace 同步完成");
+        // 刷新页面以显示新的 trace 信息
+        window.location.reload();
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "同步失败");
+      }
+    } catch (error) {
+      console.error("Error syncing traces:", error);
+      toast.error("同步失败");
+    } finally {
+      setSyncingTraces(false);
+    }
+  };
 
   const handleReevaluate = async () => {
     if (!onReevaluate) return;
@@ -420,83 +462,95 @@ function ExecutionDetails({ execution, onReevaluate }: { execution: ExecutionWit
               <CardTitle className="text-sm font-medium">总任务数</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{execution.results.length}</div>
+              <div className="text-2xl font-bold">
+                {execution.results.length}
+              </div>
             </CardContent>
           </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-green-600">
-              成功
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              {completedCount}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-red-600">
-              失败
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{failedCount}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">平均评分</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {(() => {
-                const scores = execution.results
-                  .filter((r) => r.score !== null)
-                  .map((r) => r.score!);
-                if (scores.length === 0) return "-";
-                const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
-                return avg.toFixed(1) || "--";
-              })()}
-            </div>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-green-600">
+                成功
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">
+                {completedCount}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-red-600">
+                失败
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">
+                {failedCount}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">平均评分</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {(() => {
+                  const scores = execution.results
+                    .filter((r) => r.score !== null)
+                    .map((r) => r.score!);
+                  if (scores.length === 0) return "-";
+                  const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+                  return avg.toFixed(1) || "--";
+                })()}
+              </div>
+            </CardContent>
+          </Card>
         </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {execution.status === "completed" && (
+          <Button
+            variant="outline"
+            onClick={handleSyncTraces}
+            disabled={syncingTraces}
+          >
+            {syncingTraces ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                同步中...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                同步 Langfuse
+              </>
+            )}
+          </Button>
+        )}
         {execution.status === "completed" && onReevaluate && (
-          <div className="flex items-center">
-            <Button
-              variant="outline"
-              onClick={handleReevaluate}
-              disabled={reevaluating}
-            >
-              {reevaluating ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  评估中...
-                </>
-              ) : (
-                <>
-                  <Play className="h-4 w-4 mr-2" />
-                  重新评估
-                </>
-              )}
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            onClick={handleReevaluate}
+            disabled={reevaluating}
+          >
+            {reevaluating ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                评估中...
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4 mr-2" />
+                重新评估
+              </>
+            )}
+          </Button>
         )}
       </div>
-
       <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Agent</TableHead>
-            <TableHead>测试用例</TableHead>
-            <TableHead>状态</TableHead>
-            <TableHead>执行时间</TableHead>
-            <TableHead>评分</TableHead>
-            <TableHead className="text-right">操作</TableHead>
-          </TableRow>
-        </TableHeader>
         <TableBody>
           {execution.results.map((result) => (
             <TableRow key={result.id}>
@@ -524,6 +578,28 @@ function ExecutionDetails({ execution, onReevaluate }: { execution: ExecutionWit
                   </span>
                 ) : (
                   "-"
+                )}
+              </TableCell>
+              <TableCell>
+                {result.trace_id ? (
+                  <Badge
+                    variant="default"
+                    className="bg-green-100 text-green-800 hover:bg-green-200"
+                  >
+                    <a
+                      href={`${langfuseBaseUrl}/trace/${result.trace_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1"
+                    >
+                      已同步
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </Badge>
+                ) : result.magic_code ? (
+                  <Badge variant="outline">trace 待同步</Badge>
+                ) : (
+                  <Badge variant="secondary">-</Badge>
                 )}
               </TableCell>
               <TableCell className="text-right">
@@ -556,7 +632,7 @@ function ExecutionDetails({ execution, onReevaluate }: { execution: ExecutionWit
           {selectedResult && (
             <div className="space-y-4 mt-4">
               {/* 基本信息 */}
-              <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-4 text-sm flex-wrap">
                 <span>状态: {getStatusBadge(selectedResult.status)}</span>
                 <span>
                   执行时间: {formatDuration(selectedResult.execution_time_ms)}
@@ -574,12 +650,38 @@ function ExecutionDetails({ execution, onReevaluate }: { execution: ExecutionWit
                     评分: {selectedResult.score?.toFixed(1)}
                   </span>
                 )}
+                {selectedResult.magic_code && (
+                  <span className="text-xs text-muted-foreground">
+                    Magic: {selectedResult.magic_code}
+                  </span>
+                )}
               </div>
+
+              {/* Langfuse Trace 链接 */}
+              {selectedResult.trace_id && (
+                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                  <span className="text-sm font-medium text-green-800">
+                    Langfuse Trace:
+                  </span>
+                  <a
+                    href={`${langfuseBaseUrl}/trace/${selectedResult.trace_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-green-700 hover:text-green-900 flex items-center gap-1"
+                  >
+                    {selectedResult.trace_id}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              )}
 
               {/* 输入（单行） */}
               <div>
                 <h4 className="font-semibold mb-1 text-sm">输入</h4>
-                <div className="bg-muted px-3 py-2 rounded-md text-sm truncate" title={selectedResult.test_input}>
+                <div
+                  className="bg-muted px-3 py-2 rounded-md text-sm truncate"
+                  title={selectedResult.test_input}
+                >
                   {selectedResult.test_input || "无"}
                 </div>
               </div>
@@ -595,7 +697,9 @@ function ExecutionDetails({ execution, onReevaluate }: { execution: ExecutionWit
                 <div>
                   <h4 className="font-semibold mb-1 text-sm">执行答案</h4>
                   <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-[400px] overflow-y-auto border border-green-200">
-                    {selectedResult.execution_answer || selectedResult.actual_output || "无输出"}
+                    {selectedResult.execution_answer ||
+                      selectedResult.actual_output ||
+                      "无输出"}
                   </div>
                 </div>
               </div>
@@ -603,7 +707,9 @@ function ExecutionDetails({ execution, onReevaluate }: { execution: ExecutionWit
               {/* 执行步骤（如果有） */}
               {selectedResult.execution_steps && (
                 <div>
-                  <h4 className="font-semibold mb-1 text-sm text-gray-500">执行步骤</h4>
+                  <h4 className="font-semibold mb-1 text-sm text-gray-500">
+                    执行步骤
+                  </h4>
                   <div className="bg-gray-50 p-3 rounded-md text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto text-gray-600 font-mono">
                     {selectedResult.execution_steps}
                   </div>
@@ -638,23 +744,11 @@ function ExecutionDetails({ execution, onReevaluate }: { execution: ExecutionWit
                   <h4 className="font-semibold mb-2">关键测试点</h4>
                   <ul className="space-y-1">
                     {parseJson(selectedResult.key_points).map(
-                      (point: string, idx: number) => {
-                        const metPoints = parseJson(
-                          selectedResult.key_points_met,
-                        );
-                        const isMet = metPoints.includes(point);
-                        return (
-                          <li
-                            key={idx}
-                            className={`text-sm flex items-center gap-2 ${
-                              isMet ? "text-green-600" : "text-red-600"
-                            }`}
-                          >
-                            <span>{isMet ? "✓" : "✗"}</span>
-                            {point}
-                          </li>
-                        );
-                      },
+                      (point: string, idx: number) => (
+                        <li key={idx} className="text-sm text-muted-foreground">
+                          • {point}
+                        </li>
+                      ),
                     )}
                   </ul>
                 </div>
@@ -662,23 +756,11 @@ function ExecutionDetails({ execution, onReevaluate }: { execution: ExecutionWit
                   <h4 className="font-semibold mb-2">禁止点</h4>
                   <ul className="space-y-1">
                     {parseJson(selectedResult.forbidden_points).map(
-                      (point: string, idx: number) => {
-                        const violatedPoints = parseJson(
-                          selectedResult.forbidden_points_violated,
-                        );
-                        const isViolated = violatedPoints.includes(point);
-                        return (
-                          <li
-                            key={idx}
-                            className={`text-sm flex items-center gap-2 ${
-                              isViolated ? "text-red-600" : "text-green-600"
-                            }`}
-                          >
-                            <span>{isViolated ? "✗" : "✓"}</span>
-                            {point}
-                          </li>
-                        );
-                      },
+                      (point: string, idx: number) => (
+                        <li key={idx} className="text-sm text-muted-foreground">
+                          • {point}
+                        </li>
+                      ),
                     )}
                   </ul>
                 </div>

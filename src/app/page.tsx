@@ -137,8 +137,6 @@ function ScoreChart({ data }: { data: ExecutionHistory[] }) {
           type: "value" as const,
           min: 0,
           max: 100,
-          name: "平均分",
-          nameLocation: "middle" as const,
           nameGap: 35,
           axisLabel: {
             fontSize: 11,
@@ -163,11 +161,11 @@ function ScoreChart({ data }: { data: ExecutionHistory[] }) {
             symbol: "circle",
             symbolSize: 8,
             lineStyle: {
-              color: "#3b82f6",
+              color: "#2C3947",
               width: 2,
             },
             itemStyle: {
-              color: "#3b82f6",
+              color: "#C2A56D",
             },
             connectNulls: true,
           },
@@ -383,9 +381,9 @@ export default function BenchmarkPage() {
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { className: string; label: string }> = {
       pending: { className: "bg-gray-400 hover:bg-gray-500", label: "待执行" },
-      running: { className: "bg-blue-500 hover:bg-blue-600", label: "运行中" },
+      running: { className: "bg-[#547A95]", label: "运行中" },
       completed: {
-        className: "bg-green-500 hover:bg-green-600",
+        className: "bg-[#E8EDF2] text-[#2C3947]",
         label: "已完成",
       },
       failed: { className: "bg-red-500 hover:bg-red-600", label: "失败" },
@@ -438,7 +436,10 @@ export default function BenchmarkPage() {
                 const hasScores = history.some((h) => h.avg_score !== null);
 
                 return (
-                  <Card key={`chart-${benchmark.id}`}>
+                  <Card
+                    key={`chart-${benchmark.id}`}
+                    className="hover:bg-[#333]/5 cursor-pointer"
+                  >
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm font-medium">
                         {benchmark.name}
@@ -485,16 +486,6 @@ export default function BenchmarkPage() {
             </div>
           ) : (
             <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Benchmark</TableHead>
-                  <TableHead>执行批次</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>开始时间</TableHead>
-                  <TableHead>完成时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
               <TableBody>
                 {executions.map((execution) => (
                   <TableRow
@@ -617,23 +608,11 @@ export default function BenchmarkPage() {
                         <h4 className="font-semibold mb-2">关键测试点</h4>
                         <ul className="space-y-1">
                           {parseJson(result.key_points).map(
-                            (point: string, idx: number) => {
-                              const metPoints = parseJson(
-                                result.key_points_met,
-                              );
-                              const isMet = metPoints.includes(point);
-                              return (
-                                <li
-                                  key={idx}
-                                  className={`text-sm flex items-center gap-2 ${
-                                    isMet ? "text-green-600" : "text-red-600"
-                                  }`}
-                                >
-                                  <span>{isMet ? "✓" : "✗"}</span>
-                                  {point}
-                                </li>
-                              );
-                            },
+                            (point: string, idx: number) => (
+                              <li key={idx} className="text-sm text-muted-foreground">
+                                • {point}
+                              </li>
+                            ),
                           )}
                         </ul>
                       </div>
@@ -641,25 +620,11 @@ export default function BenchmarkPage() {
                         <h4 className="font-semibold mb-2">禁止点</h4>
                         <ul className="space-y-1">
                           {parseJson(result.forbidden_points).map(
-                            (point: string, idx: number) => {
-                              const violatedPoints = parseJson(
-                                result.forbidden_points_violated,
-                              );
-                              const isViolated = violatedPoints.includes(point);
-                              return (
-                                <li
-                                  key={idx}
-                                  className={`text-sm flex items-center gap-2 ${
-                                    isViolated
-                                      ? "text-red-600"
-                                      : "text-green-600"
-                                  }`}
-                                >
-                                  <span>{isViolated ? "✗" : "✓"}</span>
-                                  {point}
-                                </li>
-                              );
-                            },
+                            (point: string, idx: number) => (
+                              <li key={idx} className="text-sm text-muted-foreground">
+                                • {point}
+                              </li>
+                            ),
                           )}
                         </ul>
                       </div>

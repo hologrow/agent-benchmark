@@ -20,6 +20,9 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.72.1(react@19.2.4))
+      '@langfuse/client':
+        specifier: ^5.1.0
+        version: 5.1.0(@opentelemetry/api@1.9.0)
       '@larksuiteoapi/node-sdk':
         specifier: ^1.60.0
         version: 1.60.0
@@ -755,6 +758,22 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@langfuse/client@5.1.0':
+    resolution: {integrity: sha512-czZxxr/9ROaTTjD5vn1qo7WxcGi4zkXGwDvNHgQKrihi6SBBsFapv7v4EtxBhwyXq339C7QyVPWDw55+Cgx9Bg==}
+    peerDependencies:
+      '@opentelemetry/api': ^1.9.0
+
+  '@langfuse/core@5.1.0':
+    resolution: {integrity: sha512-yFvC67HBtrY4B3tyzF8+RJaIqK79LBVXtAgtmEc2vhpKauecvSW0zevRnRynFX+ajUHqi9TN7tnD91FJszFLgQ==}
+    peerDependencies:
+      '@opentelemetry/api': ^1.9.0
+
+  '@langfuse/tracing@5.1.0':
+    resolution: {integrity: sha512-ScwYnQzqLZOaMPZkCsWizx139eb02GI8tD5yxs5XVjGNGZxKdw1DfRPTIONSlOhaAYCY9ILGTJdkqAtNTzsbRg==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@opentelemetry/api': ^1.9.0
 
   '@larksuiteoapi/node-sdk@1.60.0':
     resolution: {integrity: sha512-MS1eXx7K6HHIyIcCBkJLb21okoa8ZatUGQWZaCCUePm6a37RWFmT6ZKlKvHxAanSX26wNuNlwP0RhgscsE+T6g==}
@@ -2711,6 +2730,10 @@ packages:
       typescript:
         optional: true
 
+  mustache@4.2.0:
+    resolution: {integrity: sha512-71ippSywq5Yb7/tVYyGbkBggbU8H3u5Rz56fH60jGFgr8uHwxs+aSKeqmluIVzM0m0kB7xQjKS6qPfd0b2ZoqQ==}
+    hasBin: true
+
   mute-stream@2.0.0:
     resolution: {integrity: sha512-WWdIxpyjEn+FhQJQQv9aQAYlHoNVdzIzUySNV1gHUPDSdZJ3yZn7pAAbQcV7B56Mvu881q9FZV+0Vx2xC44VWA==}
     engines: {node: ^18.17.0 || >=20.5.0}
@@ -4201,6 +4224,22 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@langfuse/client@5.1.0(@opentelemetry/api@1.9.0)':
+    dependencies:
+      '@langfuse/core': 5.1.0(@opentelemetry/api@1.9.0)
+      '@langfuse/tracing': 5.1.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/api': 1.9.0
+      mustache: 4.2.0
+
+  '@langfuse/core@5.1.0(@opentelemetry/api@1.9.0)':
+    dependencies:
+      '@opentelemetry/api': 1.9.0
+
+  '@langfuse/tracing@5.1.0(@opentelemetry/api@1.9.0)':
+    dependencies:
+      '@langfuse/core': 5.1.0(@opentelemetry/api@1.9.0)
+      '@opentelemetry/api': 1.9.0
 
   '@larksuiteoapi/node-sdk@1.60.0':
     dependencies:
@@ -6224,6 +6263,8 @@ snapshots:
       typescript: 5.9.3
     transitivePeerDependencies:
       - '@types/node'
+
+  mustache@4.2.0: {}
 
   mute-stream@2.0.0: {}
 
