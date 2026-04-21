@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { spawn } from 'child_process';
 import { getExecutionById, updateExecution, getPendingTraceSyncResults, getIntegrationByType } from '@/lib/db';
-import { syncExecutionTraces } from '@/lib/langfuse-sync';
+import { syncExecutionTraces } from '@/lib/execution-trace/orchestrator';
 import { join } from 'path';
 
 /**

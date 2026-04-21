@@ -1,4 +1,4 @@
-// TestSet 相关操作
+// TestSet related operations
 
 import { getDatabase } from '.';
 
@@ -20,13 +20,13 @@ export interface TestSetItem {
   created_at: string;
 }
 
-// 获取所有测试集
+// Get all test sets
 export function getAllTestSets(): TestSet[] {
   const db = getDatabase();
   return db.prepare('SELECT * FROM test_sets ORDER BY created_at DESC').all() as TestSet[];
 }
 
-// 获取测试集详情（包含测试用例）
+// Get test set details (including test cases)
 export function getTestSetById(id: number): (TestSet & { test_cases: any[] }) | undefined {
   const db = getDatabase();
   const testSet = db.prepare('SELECT * FROM test_sets WHERE id = ?').get(id) as TestSet | undefined;

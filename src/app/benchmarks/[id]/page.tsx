@@ -70,8 +70,8 @@ interface BenchmarkResult {
     | "timeout"
     | "cancelled";
   actual_output: string | null;
-  execution_steps: string | null; // 解析后的执行步骤
-  execution_answer: string | null; // 解析后的执行答案
+  execution_steps: string | null; // Parsed execution steps
+  execution_answer: string | null; // Parsed execution answer
   output_file: string | null;
   execution_time_ms: number | null;
   error_message: string | null;
@@ -145,18 +145,18 @@ export default function BenchmarkDetailsPage() {
         const data = await response.json();
         setBenchmark(data.benchmark);
 
-        // 默认选择最后一次执行
+        // Default to selecting the last execution
         if (data.benchmark.executions && data.benchmark.executions.length > 0) {
           const latestExecution = data.benchmark.executions[0];
           setActiveTab(latestExecution.id.toString());
           fetchExecutionDetails(latestExecution.id);
         }
       } else {
-        toast.error("获取详情失败");
+        toast.error("Failed to fetch details");
       }
     } catch (error) {
       console.error("Error fetching benchmark:", error);
-      toast.error("获取详情失败");
+      toast.error("Failed to fetch details");
     } finally {
       setLoading(false);
     }
@@ -169,11 +169,11 @@ export default function BenchmarkDetailsPage() {
         const data = await response.json();
         setSelectedExecution(data.details);
       } else {
-        toast.error("获取执行详情失败");
+        toast.error("Failed to fetch execution details");
       }
     } catch (error) {
       console.error("Error fetching execution details:", error);
-      toast.error("获取执行详情失败");
+      toast.error("Failed to fetch execution details");
     }
   };
 
@@ -184,16 +184,16 @@ export default function BenchmarkDetailsPage() {
       });
 
       if (response.ok) {
-        toast.success("已开始新执行");
-        // 刷新页面以显示新的执行记录
+        toast.success("New execution started");
+        // Refresh page to show new execution record
         fetchBenchmark();
       } else {
         const error = await response.json();
-        toast.error(error.error || "启动失败");
+        toast.error(error.error || "Failed to start");
       }
     } catch (error) {
       console.error("Error starting execution:", error);
-      toast.error("启动失败");
+      toast.error("Failed to start");
     }
   };
 
@@ -217,13 +217,13 @@ export default function BenchmarkDetailsPage() {
       cancelled: "outline",
     };
     const labels: Record<string, string> = {
-      pending: "待执行",
-      running: "运行中",
-      completed: "成功",
-      failed: "失败",
-      timeout: "超时",
-      error: "错误",
-      cancelled: "已停止",
+      pending: "Pending",
+      running: "Running",
+      completed: "Success",
+      failed: "Failed",
+      timeout: "Timeout",
+      error: "Error",
+      cancelled: "Stopped",
     };
     return (
       <Badge variant={variants[status] || "default"}>
@@ -247,9 +247,9 @@ export default function BenchmarkDetailsPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="text-center py-12 text-muted-foreground">
           <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p>未找到 Benchmark</p>
+          <p>Benchmark not found</p>
           <Button className="mt-4" onClick={() => router.push("/benchmarks")}>
-            返回列表
+            Back to list
           </Button>
         </div>
       </div>
@@ -264,23 +264,23 @@ export default function BenchmarkDetailsPage() {
       <div className="mb-6 flex items-center justify-between">
         <Button variant="ghost" onClick={() => router.push("/benchmarks")}>
           <ArrowLeft className="h-4 w-4 mr-2" />
-          返回列表
+          Back to list
         </Button>
         <Button onClick={startNewExecution}>
           <RotateCcw className="h-4 w-4 mr-2" />
-          再次执行
+          Run again
         </Button>
       </div>
 
       <div className="mb-8">
         <h1 className="text-3xl font-bold">{benchmark.name}</h1>
         <p className="text-muted-foreground mt-2">
-          {benchmark.description || "无描述"}
+          {benchmark.description || "No description"}
         </p>
         <div className="flex gap-4 mt-4 text-sm text-muted-foreground">
           <span>Agents: {agentCount}</span>
-          <span>测试用例: {testCaseCount}</span>
-          <span>执行次数: {benchmark.executions?.length || 0}</span>
+          <span>Test cases: {testCaseCount}</span>
+          <span>Executions: {benchmark.executions?.length || 0}</span>
         </div>
       </div>
 
@@ -288,10 +288,10 @@ export default function BenchmarkDetailsPage() {
         <Card>
           <CardContent className="py-12 text-center">
             <Play className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p className="text-muted-foreground">暂无执行记录</p>
+            <p className="text-muted-foreground">No execution records</p>
             <Button className="mt-4" onClick={startNewExecution}>
               <Play className="h-4 w-4 mr-2" />
-              开始第一次执行
+              Start first execution
             </Button>
           </CardContent>
         </Card>
@@ -300,8 +300,8 @@ export default function BenchmarkDetailsPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>执行记录</CardTitle>
-                <CardDescription>选择执行批次查看详情</CardDescription>
+                <CardTitle>Execution Records</CardTitle>
+                <CardDescription>Select execution batch to view details</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -317,10 +317,10 @@ export default function BenchmarkDetailsPage() {
                       : "bg-muted text-muted-foreground hover:bg-muted/80"
                   }`}
                 >
-                  <span>{execution.name || `执行 #${execution.id}`}</span>
+                  <span>{execution.name || `Execution #${execution.id}`}</span>
                   <span className="text-xs opacity-80">
                     {execution.created_at
-                      ? new Date(execution.created_at).toLocaleString("zh-CN", {
+                      ? new Date(execution.created_at).toLocaleString("en-US", {
                           month: "short",
                           day: "numeric",
                           hour: "2-digit",
@@ -383,16 +383,16 @@ function ExecutionDetails({
       });
 
       if (response.ok) {
-        toast.success("Trace 同步完成");
-        // 刷新页面以显示新的 trace 信息
+        toast.success("Trace sync completed");
+        // Refresh page to show new trace info
         window.location.reload();
       } else {
         const error = await response.json();
-        toast.error(error.error || "同步失败");
+        toast.error(error.error || "Sync failed");
       }
     } catch (error) {
       console.error("Error syncing traces:", error);
-      toast.error("同步失败");
+      toast.error("Sync failed");
     } finally {
       setSyncingTraces(false);
     }
@@ -407,22 +407,22 @@ function ExecutionDetails({
       });
 
       if (response.ok) {
-        toast.success("评估任务已启动");
+        toast.success("Evaluation task started");
         onReevaluate();
       } else {
         const error = await response.json();
-        toast.error(error.error || "启动评估失败");
+        toast.error(error.error || "Failed to start evaluation");
       }
     } catch (error) {
       console.error("Error starting evaluation:", error);
-      toast.error("启动评估失败");
+      toast.error("Failed to start evaluation");
     } finally {
       setReevaluating(false);
     }
   };
 
   const handleStopExecution = async () => {
-    if (!confirm("确定要强制停止当前执行吗？")) return;
+    if (!confirm("Are you sure you want to force stop the current execution?")) return;
 
     setStopping(true);
     try {
@@ -433,17 +433,17 @@ function ExecutionDetails({
       if (response.ok) {
         const data = await response.json();
         toast.success(
-          `执行已停止 (PID: ${data.pid}, 已取消 ${data.cancelledResultsCount} 个任务)`,
+          `Execution stopped (PID: ${data.pid}, cancelled ${data.cancelledResultsCount} tasks)`,
         );
-        // 刷新页面以显示更新后的状态
+        // Refresh page to show updated status
         window.location.reload();
       } else {
         const error = await response.json();
-        toast.error(error.error || "停止执行失败");
+        toast.error(error.error || "Failed to stop execution");
       }
     } catch (error) {
       console.error("Error stopping execution:", error);
-      toast.error("停止执行失败");
+      toast.error("Failed to stop execution");
     } finally {
       setStopping(false);
     }
@@ -452,14 +452,14 @@ function ExecutionDetails({
   const handleDiagnose = async (result: BenchmarkResult, force = false) => {
     setCurrentDiagnosisResult(result);
 
-    // 如果已有诊断报告且不强制重新诊断，直接显示
+    // If diagnosis report exists and not forcing re-diagnosis, show directly
     if (result.diagnosis_report && !force) {
       setDiagnosisReport(result.diagnosis_report);
       setDiagnosisDialogOpen(true);
       return;
     }
 
-    // 调用 API 进行诊断
+    // Call API for diagnosis
     setDiagnosing(true);
     setDiagnosisReport(null);
     try {
@@ -472,14 +472,14 @@ function ExecutionDetails({
         const data = await response.json();
         setDiagnosisReport(data.diagnosis_report);
         setDiagnosisDialogOpen(true);
-        toast.success("诊断完成");
+        toast.success("Diagnosis completed");
       } else {
         const error = await response.json();
-        toast.error(error.error || "诊断失败");
+        toast.error(error.error || "Diagnosis failed");
       }
     } catch (error) {
       console.error("Error diagnosing:", error);
-      toast.error("诊断失败");
+      toast.error("Diagnosis failed");
     } finally {
       setDiagnosing(false);
     }
@@ -517,13 +517,13 @@ function ExecutionDetails({
       cancelled: "outline",
     };
     const labels: Record<string, string> = {
-      pending: "待执行",
-      running: "运行中",
-      completed: "成功",
-      failed: "失败",
-      timeout: "超时",
-      error: "错误",
-      cancelled: "已停止",
+      pending: "Pending",
+      running: "Running",
+      completed: "Success",
+      failed: "Failed",
+      timeout: "Timeout",
+      error: "Error",
+      cancelled: "Stopped",
     };
     return (
       <Badge variant={variants[status] || "default"}>
@@ -544,7 +544,7 @@ function ExecutionDetails({
     }
   };
 
-  // 解析实际输出，分离主输出和执行过程
+  // Parse actual output, separate main output and execution process
 
   const openResultDialog = (result: BenchmarkResult) => {
     setSelectedResult(result);
@@ -557,7 +557,7 @@ function ExecutionDetails({
         <div className="grid grid-cols-4 gap-4 flex-1">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">总任务数</CardTitle>
+              <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
@@ -568,7 +568,7 @@ function ExecutionDetails({
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-green-600">
-                成功
+                Success
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -580,7 +580,7 @@ function ExecutionDetails({
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-red-600">
-                失败
+                Failed
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -591,7 +591,7 @@ function ExecutionDetails({
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">平均评分</CardTitle>
+              <CardTitle className="text-sm font-medium">Avg Score</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
@@ -618,12 +618,12 @@ function ExecutionDetails({
             {stopping ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                停止中...
+                Stopping...
               </>
             ) : (
               <>
                 <Square className="h-4 w-4 mr-2" />
-                强制停止
+                Force Stop
               </>
             )}
           </Button>
@@ -637,12 +637,12 @@ function ExecutionDetails({
             {syncingTraces ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                同步中...
+                Syncing...
               </>
             ) : (
               <>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                同步 Langfuse
+                Sync Langfuse
               </>
             )}
           </Button>
@@ -656,12 +656,12 @@ function ExecutionDetails({
             {reevaluating ? (
               <>
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                评估中...
+                Evaluating...
               </>
             ) : (
               <>
                 <Play className="h-4 w-4 mr-2" />
-                重新评估
+                Re-evaluate
               </>
             )}
           </Button>
@@ -709,12 +709,12 @@ function ExecutionDetails({
                       rel="noopener noreferrer"
                       className="flex items-center gap-1"
                     >
-                      已同步
+                      Synced
                       <ExternalLink className="h-3 w-3" />
                     </a>
                   </Badge>
                 ) : result.magic_code ? (
-                  <Badge variant="outline">trace 待同步</Badge>
+                  <Badge variant="outline">Trace pending sync</Badge>
                 ) : (
                   <Badge variant="secondary">-</Badge>
                 )}
@@ -727,7 +727,7 @@ function ExecutionDetails({
                     onClick={() => openResultDialog(result)}
                   >
                     <FileText className="h-4 w-4 mr-1" />
-                    查看
+                    View
                   </Button>
                   <Button
                     size="sm"
@@ -749,7 +749,7 @@ function ExecutionDetails({
         </TableBody>
       </Table>
 
-      {/* 结果详情对话框 */}
+      {/* Result detail dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -763,11 +763,11 @@ function ExecutionDetails({
 
           {selectedResult && (
             <div className="space-y-4 mt-4">
-              {/* 基本信息 */}
+              {/* Basic info */}
               <div className="flex items-center gap-4 text-sm flex-wrap">
-                <span>状态: {getStatusBadge(selectedResult.status)}</span>
+                <span>Status: {getStatusBadge(selectedResult.status)}</span>
                 <span>
-                  执行时间: {formatDuration(selectedResult.execution_time_ms)}
+                  Execution time: {formatDuration(selectedResult.execution_time_ms)}
                 </span>
                 {selectedResult.score !== null && (
                   <span
@@ -779,7 +779,7 @@ function ExecutionDetails({
                           : "text-red-600"
                     }`}
                   >
-                    评分: {selectedResult.score?.toFixed(1)}
+                    Score: {selectedResult.score?.toFixed(1)}
                   </span>
                 )}
                 {selectedResult.magic_code && (
@@ -789,7 +789,7 @@ function ExecutionDetails({
                 )}
               </div>
 
-              {/* Langfuse Trace 链接 */}
+              {/* Langfuse Trace link */}
               {selectedResult.trace_id && (
                 <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md">
                   <span className="text-sm font-medium text-green-800">
@@ -807,41 +807,41 @@ function ExecutionDetails({
                 </div>
               )}
 
-              {/* 输入（单行） */}
+              {/* Input (single line) */}
               <div>
-                <h4 className="font-semibold mb-1 text-sm">输入</h4>
+                <h4 className="font-semibold mb-1 text-sm">Input</h4>
                 <div
                   className="bg-muted px-3 py-2 rounded-md text-sm truncate"
                   title={selectedResult.test_input}
                 >
-                  {selectedResult.test_input || "无"}
+                  {selectedResult.test_input || "None"}
                 </div>
               </div>
 
-              {/* 执行答案和期望输出（左右对比） */}
+              {/* Execution answer and expected output (side by side) */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <h4 className="font-semibold mb-1 text-sm">期望输出</h4>
+                  <h4 className="font-semibold mb-1 text-sm">Expected Output</h4>
                   <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-[400px] overflow-y-auto border border-dashed border-gray-300">
-                    {selectedResult.expected_output || "无"}
+                    {selectedResult.expected_output || "None"}
                   </div>
                 </div>
                 <div>
-                  <h4 className="font-semibold mb-1 text-sm">执行答案</h4>
+                  <h4 className="font-semibold mb-1 text-sm">Execution Answer</h4>
                   <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-[400px] overflow-y-auto border border-green-200">
                     {selectedResult.execution_answer ||
                       selectedResult.actual_output ||
-                      "无输出"}
+                      "No output"}
                   </div>
                 </div>
               </div>
 
-              {/* 执行步骤和 Trace（并排显示） */}
+              {/* Execution steps and Trace (side by side) */}
               <div className="grid grid-cols-2 gap-4">
                 {selectedResult.execution_steps && (
                   <div>
                     <h4 className="font-semibold mb-1 text-sm text-gray-500">
-                      执行步骤
+                      Execution Steps
                     </h4>
                     <div className="bg-gray-50 p-3 rounded-md text-xs whitespace-pre-wrap max-h-[300px] overflow-y-auto text-gray-600 font-mono">
                       {selectedResult.execution_steps}
@@ -860,21 +860,21 @@ function ExecutionDetails({
                 )}
               </div>
 
-              {/* 错误信息 */}
+              {/* Error message */}
               {selectedResult.error_message && (
                 <div>
-                  <h4 className="font-semibold mb-2 text-red-600">执行错误</h4>
+                  <h4 className="font-semibold mb-2 text-red-600">Execution Error</h4>
                   <div className="bg-red-50 border border-red-200 p-3 rounded-md text-sm text-red-700 whitespace-pre-wrap">
                     {selectedResult.error_message}
                   </div>
                 </div>
               )}
 
-              {/* 评估错误信息 */}
+              {/* Evaluation error message */}
               {selectedResult.evaluation_error && (
                 <div>
                   <h4 className="font-semibold mb-2 text-orange-600">
-                    评估错误
+                    Evaluation Error
                   </h4>
                   <div className="bg-orange-50 border border-orange-200 p-3 rounded-md text-sm text-orange-700 whitespace-pre-wrap">
                     {selectedResult.evaluation_error}
@@ -882,10 +882,10 @@ function ExecutionDetails({
                 </div>
               )}
 
-              {/* 关键测试点和禁止点 */}
+              {/* Key test points and forbidden points */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <h4 className="font-semibold mb-2">关键测试点</h4>
+                  <h4 className="font-semibold mb-2">Key Test Points</h4>
                   <ul className="space-y-1">
                     {parseJson(selectedResult.key_points).map(
                       (point: string, idx: number) => (
@@ -897,7 +897,7 @@ function ExecutionDetails({
                   </ul>
                 </div>
                 <div>
-                  <h4 className="font-semibold mb-2">禁止点</h4>
+                  <h4 className="font-semibold mb-2">Forbidden Points</h4>
                   <ul className="space-y-1">
                     {parseJson(selectedResult.forbidden_points).map(
                       (point: string, idx: number) => (
@@ -910,10 +910,10 @@ function ExecutionDetails({
                 </div>
               </div>
 
-              {/* 评估报告 */}
+              {/* Evaluation report */}
               {selectedResult.evaluation_report && (
                 <div>
-                  <h4 className="font-semibold mb-2">评估报告</h4>
+                  <h4 className="font-semibold mb-2">Evaluation Report</h4>
                   <div className="bg-muted p-3 rounded-md">
                     <Markdown content={selectedResult.evaluation_report} />
                   </div>
@@ -924,7 +924,7 @@ function ExecutionDetails({
         </DialogContent>
       </Dialog>
 
-      {/* 诊断结果对话框 */}
+      {/* Diagnosis result dialog */}
       <Dialog open={diagnosisDialogOpen} onOpenChange={setDiagnosisDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -932,10 +932,10 @@ function ExecutionDetails({
               <div>
                 <DialogTitle className="flex items-center gap-2">
                   <Stethoscope className="h-5 w-5 text-purple-600" />
-                  AI 诊断报告
+                  AI Diagnosis Report
                 </DialogTitle>
                 <DialogDescription>
-                  基于大模型分析的测试用例诊断结果
+                  Test case diagnosis results based on LLM analysis
                 </DialogDescription>
               </div>
               <Button
@@ -950,7 +950,7 @@ function ExecutionDetails({
                 ) : (
                   <Stethoscope className="h-4 w-4 mr-1" />
                 )}
-                重新诊断
+                Rediagnose
               </Button>
             </div>
           </DialogHeader>

@@ -9,7 +9,7 @@ import {
   getTestSetCaseIds,
   updateExecution
 } from '@/lib/db';
-import { syncExecutionTraces } from '@/lib/langfuse-sync';
+import { syncExecutionTraces } from '@/lib/execution-trace/orchestrator';
 
 // POST /api/benchmarks/:id/start - 启动 benchmark 执行
 export async function POST(

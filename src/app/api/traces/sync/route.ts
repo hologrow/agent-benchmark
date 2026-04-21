@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncExecutionTraces, syncAllPendingTraces } from "@/lib/langfuse-sync";
+import { syncExecutionTraces, syncAllPendingTraces } from "@/lib/execution-trace/orchestrator";
 
 // POST /api/traces/sync - 同步 Langfuse Traces
 export async function POST(request: NextRequest) {

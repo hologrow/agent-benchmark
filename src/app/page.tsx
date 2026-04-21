@@ -12,8 +12,6 @@ import {
   Table,
   TableBody,
   TableCell,
-  TableHead,
-  TableHeader,
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -31,22 +29,23 @@ import { Eye, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
+import type { Benchmark } from "@/types/api";
 
-interface Benchmark {
-  id: number;
-  name: string;
-  description: string;
-  created_at: string;
-}
-
+// Extended execution type with UI-specific fields
 interface Execution {
   id: number;
   benchmark_id: number;
-  name: string | null;
-  status: "pending" | "running" | "completed" | "failed";
-  started_at: string | null;
-  completed_at: string | null;
+  name?: string | null;
+  status: "pending" | "running" | "completed" | "failed" | "stopped";
+  progress: number;
+  current_agent: string | null;
+  current_test_case: string | null;
+  summary: string | null;
   created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
   benchmark_name?: string;
 }
 
@@ -80,7 +79,7 @@ interface ExecutionHistory {
   created_at: string;
 }
 
-// ECharts 组件
+// ECharts component
 function ScoreChart({ data }: { data: ExecutionHistory[] }) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<unknown>(null);
@@ -90,7 +89,7 @@ function ScoreChart({ data }: { data: ExecutionHistory[] }) {
 
     let isMounted = true;
 
-    // 动态导入 echarts
+    // Dynamic import echarts
     const initChart = async () => {
       const [
         { init, use },
@@ -106,7 +105,7 @@ function ScoreChart({ data }: { data: ExecutionHistory[] }) {
 
       if (!isMounted || !chartRef.current) return;
 
-      // 注册模块
+      // Register modules
       use([
         LineChart,
         GridComponent,
@@ -115,7 +114,7 @@ function ScoreChart({ data }: { data: ExecutionHistory[] }) {
         CanvasRenderer,
       ]);
 
-      // 初始化图表
+      // Initialize chart
       chartInstance.current = init(chartRef.current);
 
       const option = {
@@ -127,9 +126,7 @@ function ScoreChart({ data }: { data: ExecutionHistory[] }) {
         },
         xAxis: {
           type: "category" as const,
-          data: data.map((d) => `第${d.execution_number}次`),
-          name: "执行次数",
-          nameLocation: "middle" as const,
+          data: data.map((d) => `${d.execution_number}`),
           nameGap: 25,
           axisLabel: {
             fontSize: 11,
@@ -151,8 +148,8 @@ function ScoreChart({ data }: { data: ExecutionHistory[] }) {
             const value =
               p.value !== null && p.value !== undefined
                 ? Number(p.value).toFixed(1)
-                : "无数据";
-            return `${p.name}<br/>平均分: ${value}`;
+                : "No data";
+            return `${p.name}<br/>Avg Score: ${value}`;
           },
         },
         series: [
@@ -178,7 +175,7 @@ function ScoreChart({ data }: { data: ExecutionHistory[] }) {
         chartInstance.current as { setOption: (opt: unknown) => void }
       ).setOption(option);
 
-      // 响应式处理
+      // Responsive handling
       const handleResize = () => {
         (chartInstance.current as { resize?: () => void } | null)?.resize?.();
       };
@@ -231,11 +228,10 @@ export default function BenchmarkPage() {
 
   const fetchBenchmarksWithHistory = async () => {
     try {
-      const benchmarksRes = await fetch("/api/benchmarks");
-      const benchmarksData = await benchmarksRes.json();
-      const benchmarksList: Benchmark[] = benchmarksData.benchmarks || [];
+      const data = await api.benchmarks.list();
+      const benchmarksList = data.benchmarks || [];
 
-      // 按创建时间排序（最新的在前）
+      // Sort by creation time (newest first)
       benchmarksList.sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -243,7 +239,7 @@ export default function BenchmarkPage() {
 
       setBenchmarks(benchmarksList);
 
-      // 获取每个 benchmark 的执行历史
+      // Get execution history for each benchmark
       const historyMap = new Map<number, ExecutionHistory[]>();
       await Promise.all(
         benchmarksList.map(async (bm) => {
@@ -265,27 +261,24 @@ export default function BenchmarkPage() {
     benchmarkId: number,
   ): Promise<ExecutionHistory[]> => {
     try {
-      const response = await fetch(`/api/benchmarks/${benchmarkId}/executions`);
-      if (response.ok) {
-        const data = await response.json();
-        // 按创建时间排序（最早的在前，用于计算执行序号）
-        const sorted = (data.executions || []).sort(
-          (a: { created_at: string }, b: { created_at: string }) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-        );
-        // 添加执行序号并计算平均分
-        return sorted.map(
-          (
-            exec: { id: number; created_at: string; avgScore?: number | null },
-            index: number,
-          ) => ({
-            id: exec.id,
-            execution_number: index + 1,
-            avg_score: exec.avgScore ?? null,
-            created_at: exec.created_at,
-          }),
-        );
-      }
+      const data = await api.benchmarks.getExecutions(benchmarkId);
+      // Sort by creation time (earliest first, for calculating execution sequence)
+      const sorted = (data.executions || []).sort(
+        (a: { created_at: string }, b: { created_at: string }) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      );
+      // Add execution sequence and calculate average score
+      return sorted.map(
+        (
+          exec: { id: number; created_at: string; avgScore?: number | null },
+          index: number,
+        ) => ({
+          id: exec.id,
+          execution_number: index + 1,
+          avg_score: exec.avgScore ?? null,
+          created_at: exec.created_at,
+        }),
+      );
     } catch (error) {
       console.error(
         `Error fetching history for benchmark ${benchmarkId}:`,
@@ -297,29 +290,29 @@ export default function BenchmarkPage() {
 
   const fetchExecutions = async () => {
     try {
-      // 获取所有 benchmarks，然后获取它们的 executions
-      const benchmarksRes = await fetch("/api/benchmarks");
-      const benchmarksData = await benchmarksRes.json();
-      const benchmarks: Benchmark[] = benchmarksData.benchmarks || [];
+      // Get all benchmarks
+      const data = await api.benchmarks.list();
+      const benchmarks = data.benchmarks || [];
 
-      // 收集所有 executions
+      // Collect all executions
       const allExecutions: Execution[] = [];
       for (const benchmark of benchmarks) {
-        const execRes = await fetch(
-          `/api/benchmarks/${benchmark.id}/executions`,
-        );
-        const execData = await execRes.json();
-        if (execData.executions) {
-          for (const exec of execData.executions) {
-            allExecutions.push({
-              ...exec,
-              benchmark_name: benchmark.name,
-            });
+        try {
+          const execData = await api.benchmarks.getExecutions(benchmark.id);
+          if (execData.executions) {
+            for (const exec of execData.executions) {
+              allExecutions.push({
+                ...exec,
+                benchmark_name: benchmark.name,
+              });
+            }
           }
+        } catch (err) {
+          console.error(`Error fetching executions for benchmark ${benchmark.id}:`, err);
         }
       }
 
-      // 按创建时间排序
+      // Sort by creation time
       allExecutions.sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -338,9 +331,8 @@ export default function BenchmarkPage() {
     setDialogOpen(true);
 
     try {
-      const response = await fetch(`/api/executions/${execution.id}`);
-      const data = await response.json();
-      setRunDetails(data.details?.results || []);
+      const data = await api.executions.get(execution.id);
+      setRunDetails((data.details?.results as BenchmarkResult[]) || []);
     } catch (error) {
       console.error("Error fetching execution details:", error);
     } finally {
@@ -359,22 +351,15 @@ export default function BenchmarkPage() {
 
     setDeleting(true);
     try {
-      const response = await fetch(`/api/executions/${executionToDelete.id}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        toast.success("执行记录已删除");
-        setDeleteDialogOpen(false);
-        setExecutionToDelete(null);
-        fetchExecutions();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "删除失败");
-      }
+      await api.executions.delete(executionToDelete.id);
+      toast.success("Execution record deleted");
+      setDeleteDialogOpen(false);
+      setExecutionToDelete(null);
+      fetchExecutions();
     } catch (error) {
       console.error("Error deleting execution:", error);
-      toast.error("删除失败");
+      const message = error instanceof Error ? error.message : "Delete failed";
+      toast.error(message);
     } finally {
       setDeleting(false);
     }
@@ -382,16 +367,16 @@ export default function BenchmarkPage() {
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { className: string; label: string }> = {
-      pending: { className: "bg-gray-400 hover:bg-gray-500", label: "待执行" },
-      running: { className: "bg-[#547A95]", label: "运行中" },
+      pending: { className: "bg-gray-400 hover:bg-gray-500", label: "Pending" },
+      running: { className: "bg-[#547A95]", label: "Running" },
       completed: {
         className: "bg-[#E8EDF2] text-[#2C3947]",
-        label: "已完成",
+        label: "Completed",
       },
-      failed: { className: "bg-red-500 hover:bg-red-600", label: "失败" },
+      failed: { className: "bg-red-500 hover:bg-red-600", label: "Failed" },
       timeout: {
         className: "bg-orange-500 hover:bg-orange-600",
-        label: "超时",
+        label: "Timeout",
       },
     };
     const config = statusConfig[status] || {
@@ -402,10 +387,10 @@ export default function BenchmarkPage() {
   };
 
   const getScoreBadge = (score: number | null) => {
-    if (score === null) return <Badge variant="secondary">未评分</Badge>;
-    if (score >= 80) return <Badge className="bg-green-500">{score}分</Badge>;
-    if (score >= 60) return <Badge className="bg-yellow-500">{score}分</Badge>;
-    return <Badge variant="destructive">{score}分</Badge>;
+    if (score === null) return <Badge variant="secondary">Not Scored</Badge>;
+    if (score >= 80) return <Badge className="bg-green-500">{score}</Badge>;
+    if (score >= 60) return <Badge className="bg-yellow-500">{score}</Badge>;
+    return <Badge variant="destructive">{score}</Badge>;
   };
 
   const parseJson = (str: string | null) => {
@@ -420,16 +405,16 @@ export default function BenchmarkPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold">Benchmark 评分</h1>
+        <h1 className="text-3xl font-bold">Benchmark Scores</h1>
         <p className="text-muted-foreground mt-2">
-          查看所有 Benchmark 执行结果和详细评分
+          View all Benchmark execution results and detailed scores
         </p>
       </div>
 
-      {/* 分数趋势图表 - 仅显示有执行记录的 benchmark */}
+      {/* Score trend chart - only show benchmarks with execution records */}
       {!chartLoading && benchmarks.length > 0 && executionHistory.size > 0 && (
         <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4">分数趋势</h2>
+          <h2 className="text-xl font-semibold mb-4">Score Trends</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {benchmarks
               .filter((bm) => executionHistory.has(bm.id))
@@ -447,7 +432,7 @@ export default function BenchmarkPage() {
                         {benchmark.name}
                       </CardTitle>
                       <CardDescription>
-                        共 {history.length} 次执行
+                        {history.length} executions total
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -455,7 +440,7 @@ export default function BenchmarkPage() {
                         <ScoreChart data={history} />
                       ) : (
                         <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
-                          暂无评分数据
+                          No score data available
                         </div>
                       )}
                     </CardContent>
@@ -468,8 +453,8 @@ export default function BenchmarkPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>执行历史</CardTitle>
-          <CardDescription>所有 Benchmark 运行的概览</CardDescription>
+          <CardTitle>Execution History</CardTitle>
+          <CardDescription>Overview of all Benchmark runs</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -478,12 +463,12 @@ export default function BenchmarkPage() {
             </div>
           ) : executions.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              暂无执行记录，请先
+              No execution records yet, please
               <Link
                 href="/benchmarks"
                 className="text-primary hover:underline ml-1"
               >
-                创建并执行 Benchmark
+                create and run a Benchmark
               </Link>
             </div>
           ) : (
@@ -501,7 +486,7 @@ export default function BenchmarkPage() {
                       {execution.benchmark_name}
                     </TableCell>
                     <TableCell>
-                      {execution.name || `执行 #${execution.id}`}
+                      {execution.name || `Execution #${execution.id}`}
                     </TableCell>
                     <TableCell>{getStatusBadge(execution.status)}</TableCell>
                     <TableCell>
@@ -526,7 +511,7 @@ export default function BenchmarkPage() {
                         }}
                       >
                         <Eye className="h-4 w-4 mr-1" />
-                        查看详情
+                        View Details
                       </Button>
                       <Button
                         variant="ghost"
@@ -550,11 +535,11 @@ export default function BenchmarkPage() {
           <DialogHeader>
             <DialogTitle>
               {selectedExecution?.benchmark_name} -{" "}
-              {selectedExecution?.name || `执行 #${selectedExecution?.id}`} -
-              详细结果
+              {selectedExecution?.name || `Execution #${selectedExecution?.id}`}{" "}
+              - Detailed Results
             </DialogTitle>
             <DialogDescription>
-              查看每个测试用例的输入、输出和评分详情
+              View input, output and scoring details for each test case
             </DialogDescription>
           </DialogHeader>
 
@@ -585,33 +570,36 @@ export default function BenchmarkPage() {
                   <CardContent className="space-y-4 pt-6">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <h4 className="font-semibold mb-2">输入</h4>
+                        <h4 className="font-semibold mb-2">Input</h4>
                         <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap">
                           {result.test_input}
                         </div>
                       </div>
                       <div>
-                        <h4 className="font-semibold mb-2">期望输出</h4>
+                        <h4 className="font-semibold mb-2">Expected Output</h4>
                         <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap">
-                          {result.expected_output || "无"}
+                          {result.expected_output || "None"}
                         </div>
                       </div>
                     </div>
 
                     <div>
-                      <h4 className="font-semibold mb-2">实际输出</h4>
+                      <h4 className="font-semibold mb-2">Actual Output</h4>
                       <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-64 overflow-y-auto">
-                        {result.actual_output || "无输出"}
+                        {result.actual_output || "No output"}
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <h4 className="font-semibold mb-2">关键测试点</h4>
+                        <h4 className="font-semibold mb-2">Key Points</h4>
                         <ul className="space-y-1">
                           {parseJson(result.key_points).map(
                             (point: string, idx: number) => (
-                              <li key={idx} className="text-sm text-muted-foreground">
+                              <li
+                                key={idx}
+                                className="text-sm text-muted-foreground"
+                              >
                                 • {point}
                               </li>
                             ),
@@ -619,11 +607,14 @@ export default function BenchmarkPage() {
                         </ul>
                       </div>
                       <div>
-                        <h4 className="font-semibold mb-2">禁止点</h4>
+                        <h4 className="font-semibold mb-2">Forbidden Points</h4>
                         <ul className="space-y-1">
                           {parseJson(result.forbidden_points).map(
                             (point: string, idx: number) => (
-                              <li key={idx} className="text-sm text-muted-foreground">
+                              <li
+                                key={idx}
+                                className="text-sm text-muted-foreground"
+                              >
                                 • {point}
                               </li>
                             ),
@@ -634,7 +625,9 @@ export default function BenchmarkPage() {
 
                     {result.evaluation_report && (
                       <div>
-                        <h4 className="font-semibold mb-2">评估报告</h4>
+                        <h4 className="font-semibold mb-2">
+                          Evaluation Report
+                        </h4>
                         <div className="bg-muted p-3 rounded-md">
                           <Markdown content={result.evaluation_report} />
                         </div>
@@ -642,9 +635,9 @@ export default function BenchmarkPage() {
                     )}
 
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>执行时间: {result.execution_time_ms}ms</span>
+                      <span>Execution Time: {result.execution_time_ms}ms</span>
                       {result.output_file && (
-                        <span>输出文件: {result.output_file}</span>
+                        <span>Output File: {result.output_file}</span>
                       )}
                     </div>
                   </CardContent>
@@ -653,23 +646,24 @@ export default function BenchmarkPage() {
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
-              暂无详细结果
+              No detailed results available
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* 删除确认对话框 */}
+      {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认删除</DialogTitle>
+            <DialogTitle>Confirm Delete</DialogTitle>
             <DialogDescription>
-              确定要删除执行记录 &quot;
-              {executionToDelete?.name || `执行 #${executionToDelete?.id}`}
-              &quot; 吗？
+              Are you sure you want to delete the execution record &quot;
+              {executionToDelete?.name || `Execution #${executionToDelete?.id}`}
+              &quot;?
               <br />
-              此操作将同时删除该执行的所有结果和评估数据，且无法撤销。
+              This action will also delete all results and evaluation data for
+              this execution and cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -678,7 +672,7 @@ export default function BenchmarkPage() {
               onClick={() => setDeleteDialogOpen(false)}
               disabled={deleting}
             >
-              取消
+              Cancel
             </Button>
             <Button
               variant="destructive"
@@ -688,12 +682,12 @@ export default function BenchmarkPage() {
               {deleting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  删除中...
+                  Deleting...
                 </>
               ) : (
                 <>
                   <Trash2 className="h-4 w-4 mr-2" />
-                  删除
+                  Delete
                 </>
               )}
             </Button>

@@ -12,11 +12,11 @@ import {
 } from "lucide-react";
 
 const navItems = [
-  { href: "/", label: "Benchmark 评分", icon: BarChart3 },
-  { href: "/test-sets", label: "测试集", icon: FolderOpen },
-  { href: "/benchmarks", label: "Benchmark 管理", icon: PlayCircle },
-  { href: "/rl-training", label: "强化训练", icon: GraduationCap },
-  { href: "/settings", label: "设置", icon: Settings },
+  { href: "/", label: "Benchmark Scores", icon: BarChart3 },
+  { href: "/test-sets", label: "Test Sets", icon: FolderOpen },
+  { href: "/benchmarks", label: "Benchmarks", icon: PlayCircle },
+  { href: "/rl-training", label: "RL Training", icon: GraduationCap },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function NavBar() {
@@ -28,7 +28,7 @@ export function NavBar() {
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-2">
             <BarChart3 className="h-6 w-6" />
-            <span className="text-lg font-bold">Agent Benchmark Runner</span>
+            <span className="text-lg font-bold">Agent Benchmark</span>
           </div>
 
           <div className="flex items-center gap-1">

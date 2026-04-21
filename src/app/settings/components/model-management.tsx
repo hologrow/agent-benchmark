@@ -38,26 +38,22 @@ import { Plus, Edit, Trash2, Loader2, Brain, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { api } from '@/lib/api';
+import type { Model } from '@/types/api';
 
-interface Model {
-  id: number;
-  name: string;
-  model_id: string;
-  provider: string;
-  api_key: string | null;
-  base_url: string | null;
-  config: string | null;
+// Extend the shared Model type with local properties
+interface LocalModel extends Model {
   is_default: number;
-  created_at: string;
+  config: string | null;
 }
 
 export function ModelManagement() {
-  const [models, setModels] = useState<Model[]>([]);
+  const [models, setModels] = useState<LocalModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingModel, setEditingModel] = useState<Model | null>(null);
+  const [editingModel, setEditingModel] = useState<LocalModel | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletingModel, setDeletingModel] = useState<Model | null>(null);
+  const [deletingModel, setDeletingModel] = useState<LocalModel | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -75,12 +71,11 @@ export function ModelManagement() {
 
   const fetchModels = async () => {
     try {
-      const response = await fetch('/api/models');
-      const data = await response.json();
-      setModels(data.models || []);
+      const data = await api.models.list();
+      setModels(data.models as LocalModel[] || []);
     } catch (error) {
       console.error('Error fetching models:', error);
-      toast.error('获取模型配置失败');
+      toast.error('Failed to fetch model configuration');
     } finally {
       setLoading(false);
     }
@@ -94,38 +89,33 @@ export function ModelManagement() {
         try {
           JSON.parse(formData.config);
         } catch {
-          toast.error('配置必须是有效的 JSON 格式');
+          toast.error('Configuration must be valid JSON format');
           return;
         }
       }
 
-      const url = editingModel ? `/api/models/${editingModel.id}` : '/api/models';
-      const method = editingModel ? 'PUT' : 'POST';
+      const payload = {
+        ...formData,
+        api_key: formData.api_key || undefined,
+        base_url: formData.base_url || undefined,
+        config: formData.config ? JSON.parse(formData.config) : undefined,
+      };
 
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          api_key: formData.api_key || null,
-          base_url: formData.base_url || null,
-          config: formData.config || '{}',
-        }),
-      });
-
-      if (response.ok) {
-        toast.success(editingModel ? '模型配置已更新' : '模型配置已创建');
-        setDialogOpen(false);
-        setEditingModel(null);
-        resetForm();
-        fetchModels();
+      if (editingModel) {
+        await api.models.update(editingModel.id, payload);
       } else {
-        const error = await response.json();
-        toast.error(error.error || '操作失败');
+        await api.models.create(payload);
       }
+
+      toast.success(editingModel ? 'Model configuration updated' : 'Model configuration created');
+      setDialogOpen(false);
+      setEditingModel(null);
+      resetForm();
+      fetchModels();
     } catch (error) {
       console.error('Error saving model:', error);
-      toast.error('保存失败');
+      const message = error instanceof Error ? error.message : 'Save failed';
+      toast.error(message);
     }
   };
 
@@ -141,7 +131,7 @@ export function ModelManagement() {
     });
   };
 
-  const handleEdit = (model: Model) => {
+  const handleEdit = (model: LocalModel) => {
     setEditingModel(model);
     setFormData({
       name: model.name,
@@ -159,21 +149,15 @@ export function ModelManagement() {
     if (!deletingModel) return;
 
     try {
-      const response = await fetch(`/api/models/${deletingModel.id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        toast.success('模型配置已删除');
-        setDeleteDialogOpen(false);
-        setDeletingModel(null);
-        fetchModels();
-      } else {
-        toast.error('删除失败');
-      }
+      await api.models.delete(deletingModel.id);
+      toast.success('Model configuration deleted');
+      setDeleteDialogOpen(false);
+      setDeletingModel(null);
+      fetchModels();
     } catch (error) {
       console.error('Error deleting model:', error);
-      toast.error('删除失败');
+      const message = error instanceof Error ? error.message : 'Delete failed';
+      toast.error(message);
     }
   };
 
@@ -184,10 +168,10 @@ export function ModelManagement() {
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('zh-CN');
+    return new Date(dateStr).toLocaleString('en-US');
   };
 
-  const maskApiKey = (key: string | null) => {
+  const maskApiKey = (key: string | undefined) => {
     if (!key) return '-';
     if (key.length <= 8) return '****';
     return key.substring(0, 4) + '****' + key.substring(key.length - 4);
@@ -197,19 +181,19 @@ export function ModelManagement() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">模型管理</h2>
-          <p className="text-muted-foreground mt-1">配置 LLM 模型和 API 授权信息，供评估器使用</p>
+          <h2 className="text-2xl font-bold">Model Management</h2>
+          <p className="text-muted-foreground mt-1">Configure LLM models and API credentials for evaluators</p>
         </div>
         <Button onClick={openCreateDialog}>
           <Plus className="h-4 w-4 mr-2" />
-          新建模型
+          New Model
         </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>模型列表</CardTitle>
-          <CardDescription>共 {models.length} 个模型配置</CardDescription>
+          <CardTitle>Model List</CardTitle>
+          <CardDescription>{models.length} model configurations</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -219,22 +203,22 @@ export function ModelManagement() {
           ) : models.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Brain className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>暂无模型配置</p>
+              <p>No model configurations</p>
               <Button variant="outline" className="mt-4" onClick={openCreateDialog}>
-                创建第一个模型配置
+                Create first model configuration
               </Button>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>模型ID</TableHead>
-                  <TableHead>提供商</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Model ID</TableHead>
+                  <TableHead>Provider</TableHead>
                   <TableHead>API Key</TableHead>
-                  <TableHead>默认</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>Default</TableHead>
+                  <TableHead>Created At</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -248,7 +232,7 @@ export function ModelManagement() {
                       {model.is_default ? (
                         <Badge variant="default" className="bg-yellow-500">
                           <Star className="h-3 w-3 mr-1" />
-                          默认
+                          Default
                         </Badge>
                       ) : (
                         '-'
@@ -283,18 +267,18 @@ export function ModelManagement() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingModel ? '编辑模型配置' : '新建模型配置'}</DialogTitle>
+            <DialogTitle>{editingModel ? 'Edit Model Configuration' : 'New Model Configuration'}</DialogTitle>
             <DialogDescription>
-              配置 LLM 模型的 API 授权信息和参数
+              Configure LLM model API credentials and parameters
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">显示名称</label>
+                <label className="text-sm font-medium">Display Name</label>
                 <Input
-                  placeholder="如：Claude Sonnet"
+                  placeholder="e.g., Claude Sonnet"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   required
@@ -302,9 +286,9 @@ export function ModelManagement() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">模型ID</label>
+                <label className="text-sm font-medium">Model ID</label>
                 <Input
-                  placeholder="如：claude-sonnet-4-6"
+                  placeholder="e.g., claude-sonnet-4-6"
                   value={formData.model_id}
                   onChange={(e) => setFormData({ ...formData, model_id: e.target.value })}
                   required
@@ -313,19 +297,19 @@ export function ModelManagement() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">提供商</label>
+              <label className="text-sm font-medium">Provider</label>
               <Select
                 value={formData.provider}
                 onValueChange={(value) => setFormData({ ...formData, provider: value || "anthropic" })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="选择提供商" />
+                  <SelectValue placeholder="Select provider" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
                   <SelectItem value="openai">OpenAI (GPT)</SelectItem>
                   <SelectItem value="azure">Azure OpenAI</SelectItem>
-                  <SelectItem value="custom">自定义</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -341,7 +325,7 @@ export function ModelManagement() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">自定义 Base URL（可选）</label>
+              <label className="text-sm font-medium">Custom Base URL (Optional)</label>
               <Input
                 placeholder="https://api.example.com/v1"
                 value={formData.base_url}
@@ -350,7 +334,7 @@ export function ModelManagement() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">额外配置 (JSON)</label>
+              <label className="text-sm font-medium">Additional Config (JSON)</label>
               <Textarea
                 placeholder='{"temperature": 0.7, "max_tokens": 4096}'
                 className="min-h-[150px] font-mono text-sm"
@@ -361,9 +345,9 @@ export function ModelManagement() {
 
             <div className="flex flex-row items-center justify-between rounded-lg border p-4">
               <div className="space-y-0.5">
-                <label className="text-base font-medium">设为默认模型</label>
+                <label className="text-base font-medium">Set as Default Model</label>
                 <div className="text-sm text-muted-foreground">
-                  评估器将默认使用此模型进行评估
+                  Evaluators will default to using this model for evaluation
                 </div>
               </div>
               <Switch
@@ -373,7 +357,7 @@ export function ModelManagement() {
             </div>
 
             <DialogFooter>
-              <Button type="submit">{editingModel ? '保存' : '创建'}</Button>
+              <Button type="submit">{editingModel ? 'Save' : 'Create'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -382,17 +366,17 @@ export function ModelManagement() {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认删除</DialogTitle>
+            <DialogTitle>Confirm Delete</DialogTitle>
             <DialogDescription>
-              确定要删除模型配置 "{deletingModel?.name}" 吗？此操作不可撤销。
+              Are you sure you want to delete the model configuration &quot;{deletingModel?.name}&quot;? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
-              取消
+              Cancel
             </Button>
             <Button variant="destructive" onClick={handleDelete}>
-              删除
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>
