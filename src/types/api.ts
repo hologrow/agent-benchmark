@@ -301,8 +301,8 @@ export interface DiscoverPluginsResponse {
   capabilities: PluginCapability;
 }
 
-// Lark plugin types
-export interface LarkBase {
+/** Import wizard: top-level sources (e.g. Bitable app). */
+export interface ImportSourceRow {
   id: string;
   name: string;
 }
@@ -318,8 +318,16 @@ export interface LarkField {
   type: string;
 }
 
+export interface ListImportSourcesResponse {
+  sources: ImportSourceRow[];
+}
+
+/** @deprecated Use ImportSourceRow */
+export type LarkBase = ImportSourceRow;
+
+/** @deprecated Legacy shape with `bases`; prefer ListImportSourcesResponse */
 export interface ListLarkBasesResponse {
-  bases: LarkBase[];
+  bases: ImportSourceRow[];
 }
 
 export interface ListLarkTablesResponse {
@@ -330,12 +338,15 @@ export interface ListLarkFieldsResponse {
   fields: LarkField[];
 }
 
-export interface LarkImportRequest {
-  items: string[]; // format: "baseId/tableId"
+export interface ImportTestCasesRequest {
+  items: string[]; // e.g. "sourceId/tableId"
   fieldMapping?: Record<string, string>;
 }
 
-export interface LarkImportResponse {
+/** @deprecated Use ImportTestCasesRequest */
+export type LarkImportRequest = ImportTestCasesRequest;
+
+export interface ImportTestCasesResponse {
   success: boolean;
   importedCount: number;
   testCases: Array<{
@@ -348,6 +359,27 @@ export interface LarkImportResponse {
     how?: string;
   }>;
   error?: string;
+}
+
+/** @deprecated Use ImportTestCasesResponse */
+export type LarkImportResponse = ImportTestCasesResponse;
+
+/**
+ * Single endpoint: POST /api/plugins/:pluginId
+ * Body: { action, payload? }
+ */
+export const PLUGIN_IMPORT_ACTIONS = [
+  'listImportSources',
+  'listImportTables',
+  'listImportFields',
+  'importTestCases',
+] as const;
+
+export type PluginImportAction = (typeof PLUGIN_IMPORT_ACTIONS)[number];
+
+export interface PluginImportCommand {
+  action: PluginImportAction;
+  payload?: Record<string, unknown>;
 }
 
 // RL Training types

@@ -71,6 +71,96 @@ export interface TestCaseData {
   how?: string;
 }
 
+/** Generic row for import wizard (e.g. Bitable base, table). */
+export interface ImportSchemaSource {
+  id: string;
+  name: string;
+}
+
+/** Field descriptor for column mapping in import wizard. */
+export interface ImportSchemaField {
+  id: string;
+  name: string;
+  type: string;
+}
+
+/** Legacy Bitable → DB sync (optional capability for import plugins). */
+export interface LegacySyncSystemField {
+  key: string;
+  label: string;
+  required: boolean;
+}
+
+export interface LegacySyncCatalogQuery {
+  appToken: string;
+  tableId?: string;
+}
+
+export interface LegacySyncCatalogResult {
+  tables?: Array<{ tableId: string; name: string }>;
+  fields?: Array<{ fieldId: string; fieldName: string; type: unknown }>;
+  systemFields?: LegacySyncSystemField[];
+  error?: string;
+  code?: number;
+  isPermissionError?: boolean;
+  permissionHint?: string;
+}
+
+export interface SyncTestCasesToDatabaseInput {
+  appToken: string;
+  tableId: string;
+  viewId?: string;
+  syncMode?: 'upsert' | 'create_only' | 'update_only';
+  columnMapping?: Record<string, string>;
+  createTestSet?: boolean;
+  testSetName?: string;
+  testSetDescription?: string;
+}
+
+export interface SyncTestCasesToDatabaseResult {
+  success: boolean;
+  stats: {
+    total: number;
+    created: number;
+    updated: number;
+    skipped: number;
+    errors: number;
+  };
+  testSet: {
+    id: number;
+    name: string;
+    testCaseCount: number;
+  } | null;
+  errors: string[];
+}
+
+/** One parsed row ready for TestCasePersistencePort / externalTableSync (plugins/host). */
+export interface LegacySyncParsedTestCasePayload {
+  test_id: string;
+  name: string;
+  description: string;
+  input: string;
+  expected_output: string;
+  key_points: string;
+  forbidden_points: string;
+  category: string;
+  how: string;
+}
+
+/** Result of {@link CapabilityInterfaces}[IMPORT_TEST_CASES].fetchLegacySyncRecords — fetch/parse only, no DB. */
+export interface LegacySyncFetchResult {
+  success: boolean;
+  /** Total raw rows from the external source (before skipping invalid). */
+  rawRecordCount: number;
+  /** Valid rows in stable order. */
+  rows: LegacySyncParsedTestCasePayload[];
+  /** Hint for default test set title when the plugin can resolve one. */
+  suggestedTestSetName?: string;
+  nonFatalErrors: string[];
+  /** Set when the external list API fails entirely. */
+  apiError?: string;
+}
+
 export interface CapabilityInterfaces {
   [Capability.IMPORT_TEST_CASES]: {
     /** Get import button UI definition */
@@ -114,6 +204,38 @@ export interface CapabilityInterfaces {
       }>;
       total?: number;
     }>;
+
+    /**
+     * Enumerate top-level import sources (e.g. Bitable apps/bases). Optional; omit if not needed.
+     */
+    listImportSources?(): Promise<ImportSchemaSource[]>;
+
+    /**
+     * List tables (or sheets) within a source.
+     */
+    listImportTables?(sourceId: string): Promise<ImportSchemaSource[]>;
+
+    /**
+     * List fields/columns for mapping within a table.
+     */
+    listImportFields?(
+      sourceId: string,
+      tableId: string,
+    ): Promise<ImportSchemaField[]>;
+
+    /**
+     * Legacy admin sync: list tables / fields + system field hints for mapping UI (e.g. Bitable).
+     */
+    getLegacySyncCatalog?(
+      query: LegacySyncCatalogQuery,
+    ): Promise<LegacySyncCatalogResult>;
+
+    /**
+     * 外部表拉取并解析（不落库）。持久化由应用注入的 `PluginHostContext.externalTableSync` 完成（见 plugins/host）。
+     */
+    fetchLegacySyncRecords?(
+      input: SyncTestCasesToDatabaseInput,
+    ): Promise<LegacySyncFetchResult>;
   };
 
   [Capability.TRACE_EXECUTION]: {
@@ -276,6 +398,43 @@ export function isImportTestCasesPlugin(plugin: IPlugin): plugin is ImportTestCa
   return (
     typeof candidate.getImportButtonUI === 'function' &&
     typeof candidate.getImportDialog === 'function'
+  );
+}
+
+/** Plugin exposes import wizard schema APIs (bases/tables/fields). */
+export function hasImportSchemaMethods(
+  plugin: IPlugin,
+): plugin is ImportTestCasesPlugin &
+  Required<
+    Pick<
+      CapabilityType<Capability.IMPORT_TEST_CASES>,
+      'listImportSources' | 'listImportTables' | 'listImportFields'
+    >
+  > {
+  if (!isImportTestCasesPlugin(plugin)) return false;
+  const c = plugin as ImportTestCasesPlugin;
+  return (
+    typeof c.listImportSources === 'function' &&
+    typeof c.listImportTables === 'function' &&
+    typeof c.listImportFields === 'function'
+  );
+}
+
+/** Plugin implements legacy Bitable catalog + fetch (getLegacySyncCatalog + fetchLegacySyncRecords). */
+export function hasLegacySyncMethods(
+  plugin: IPlugin,
+): plugin is ImportTestCasesPlugin &
+  Required<
+    Pick<
+      CapabilityType<Capability.IMPORT_TEST_CASES>,
+      'getLegacySyncCatalog' | 'fetchLegacySyncRecords'
+    >
+  > {
+  if (!isImportTestCasesPlugin(plugin)) return false;
+  const c = plugin as ImportTestCasesPlugin;
+  return (
+    typeof c.getLegacySyncCatalog === 'function' &&
+    typeof c.fetchLegacySyncRecords === 'function'
   );
 }
 

@@ -44,16 +44,15 @@ import {
   Trash2,
   CheckSquare,
   Database,
-  CloudDownload,
   Edit,
   FolderOpen,
 } from 'lucide-react';
-import { usePlugins, type ImportButtonUI } from '@/lib/hooks/use-plugins';
-import { PluginImportDialog } from './components/plugin-import-dialog';
+import { PluginImportHeaderActions } from '@/lib/plugins/plugin-import-header-actions';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
+import { formatDateLocal, formatDateTimeLocal } from '@/lib/format-datetime';
 import { api } from '@/lib/api';
 import type { TestSet, TestCase } from '@/types/api';
 
@@ -102,11 +101,6 @@ export default function TestSetsPage() {
   const [editingCase, setEditingCase] = useState<TestCase | null>(null);
   const [deleteCaseDialogOpen, setDeleteCaseDialogOpen] = useState(false);
   const [deletingCase, setDeletingCase] = useState<TestCase | null>(null);
-
-  // Plugin Import dialogs
-  const [pluginImportOpen, setPluginImportOpen] = useState(false);
-  const [selectedPlugin, setSelectedPlugin] = useState<ImportButtonUI | null>(null);
-  const { importButtons } = usePlugins();
 
   // Forms
   const testSetForm = useForm<TestSetFormData>({
@@ -367,20 +361,7 @@ export default function TestSetsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          {importButtons.map((button) => (
-            <Button
-              key={button.pluginId}
-              variant={button.variant || 'outline'}
-              onClick={() => {
-                setSelectedPlugin(button);
-                setPluginImportOpen(true);
-              }}
-              style={button.color ? { borderColor: button.color, color: button.color } : undefined}
-            >
-              <CloudDownload className="h-4 w-4 mr-2" />
-              {button.label}
-            </Button>
-          ))}
+          <PluginImportHeaderActions onImportSuccess={fetchData} />
         </div>
       </div>
 
@@ -448,9 +429,7 @@ export default function TestSetsPage() {
                           {testSet.description || '-'}
                         </TableCell>
                         <TableCell>
-                          {new Date(testSet.created_at).toLocaleDateString(
-                            'zh-CN'
-                          )}
+                          {formatDateLocal(testSet.created_at)}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-2 justify-end">
@@ -823,7 +802,7 @@ export default function TestSetsPage() {
               <span>
                 Created At:{' '}
                 {selectedTestSet?.created_at
-                  ? new Date(selectedTestSet.created_at).toLocaleString('zh-CN')
+                  ? formatDateTimeLocal(selectedTestSet.created_at)
                   : '-'}
               </span>
             </div>
@@ -1059,18 +1038,6 @@ export default function TestSetsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Plugin Import Dialog */}
-      {selectedPlugin && (
-        <PluginImportDialog
-          pluginId={selectedPlugin.pluginId}
-          pluginName={selectedPlugin.pluginName}
-          componentId={selectedPlugin.dialog?.componentId}
-          open={pluginImportOpen}
-          onOpenChange={setPluginImportOpen}
-          onImportSuccess={fetchData}
-        />
-      )}
 
     </div>
   );

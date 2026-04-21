@@ -1,7 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, type ComponentType } from 'react';
+import { createRoot } from 'react-dom/client';
 import {
+  Dialog,
+  DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -17,15 +20,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import * as LucideIcons from 'lucide-react';
 import { Loader2, AlertCircle, HelpCircle, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import type { LarkTable, LarkField } from '@/types/api';
+import type { ImportButtonUI, LarkField, LarkTable } from '@/types/api';
 
-interface LarkImportDialogProps {
+/** Lark Bitable 向导表单 props */
+export type LarkBitableImportFormProps = {
+  pluginId: string;
   onSuccess?: () => void;
   onCancel?: () => void;
-}
+};
+
+const LARK_PLUGIN_ID = 'lark';
 
 interface SystemField {
   key: string;
@@ -42,7 +50,12 @@ const SYSTEM_FIELDS: SystemField[] = [
   { key: 'how', label: 'How', required: false, description: 'Test type/category' },
 ];
 
-export function LarkImportDialog({ onSuccess, onCancel }: LarkImportDialogProps) {
+/** Lark/Feishu Bitable 导入向导（仅表单内容；弹层请用 {@link openLarkBitableImportDialog} 命令式挂载）。 */
+export function LarkBitableImportForm({
+  pluginId,
+  onSuccess,
+  onCancel,
+}: LarkBitableImportFormProps) {
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [tables, setTables] = useState<LarkTable[]>([]);
@@ -73,7 +86,7 @@ export function LarkImportDialog({ onSuccess, onCancel }: LarkImportDialogProps)
     setLoading(true);
     setError(null);
     try {
-      const data = await api.plugins.larkTables(appId);
+      const data = await api.plugins.importTables(pluginId, appId);
       setTables(data.tables || []);
       if (data.tables?.length > 0) {
         setSelectedTableId(data.tables[0].id);
@@ -99,7 +112,11 @@ export function LarkImportDialog({ onSuccess, onCancel }: LarkImportDialogProps)
     setLoading(true);
     setError(null);
     try {
-      const data = await api.plugins.larkFields(appId, selectedTableId);
+      const data = await api.plugins.importFields(
+        pluginId,
+        appId,
+        selectedTableId,
+      );
       setTableFields(data.fields || []);
 
       const autoMapping: Record<string, string> = {};
@@ -142,17 +159,36 @@ export function LarkImportDialog({ onSuccess, onCancel }: LarkImportDialogProps)
 
     setImporting(true);
     try {
-      const data = await api.plugins.larkImport({
-        items: [`${appId}/${selectedTableId}`],
-        fieldMapping,
+      /** 必须走 `/api/test-cases/sync` 落库；`plugins.importTestCases` / `importItems` 只拉数不落库。 */
+      const result = await api.testCases.legacySyncToDatabase(pluginId, {
+        appToken: appId,
+        tableId: selectedTableId,
+        columnMapping: fieldMapping,
+        syncMode: 'upsert',
+        createTestSet: true,
       });
 
-      if (data.success) {
-        toast.success(`Successfully imported ${data.importedCount} test cases`);
-        onSuccess?.();
-      } else {
-        toast.error(data.error || 'Import failed');
+      if (!result.success) {
+        const msg =
+          result.errors?.length > 0
+            ? result.errors.join('; ')
+            : 'Import failed';
+        toast.error(msg);
+        return;
       }
+
+      const { created, updated, skipped } = result.stats;
+      const parts = [
+        created > 0 ? `${created} created` : null,
+        updated > 0 ? `${updated} updated` : null,
+        skipped > 0 ? `${skipped} skipped` : null,
+      ].filter(Boolean);
+      toast.success(
+        parts.length > 0
+          ? `Sync done: ${parts.join(', ')}`
+          : 'Sync completed',
+      );
+      onSuccess?.();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Import failed';
       toast.error(message);
@@ -369,3 +405,108 @@ export function LarkImportDialog({ onSuccess, onCancel }: LarkImportDialogProps)
     </>
   );
 }
+
+function LarkBitableImportDialogLayer({
+  onFinish,
+}: {
+  onFinish: (result: 'success' | 'cancel') => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const settled = useRef(false);
+
+  const settle = (result: 'success' | 'cancel') => {
+    if (settled.current) return;
+    settled.current = true;
+    setOpen(false);
+    queueMicrotask(() => onFinish(result));
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) settle('cancel');
+      }}
+    >
+      <DialogContent className="max-w-lg">
+        <LarkBitableImportForm
+          pluginId={LARK_PLUGIN_ID}
+          onSuccess={() => settle('success')}
+          onCancel={() => settle('cancel')}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export type OpenLarkBitableImportOptions = {
+  /** 仅当用户完成导入且关闭弹层后调用 */
+  onSuccess?: () => void;
+};
+
+/**
+ * 命令式打开 Lark 导入弹窗：`createRoot` 挂到 `document.body` 下独立节点，页面无需包含任何 Dialog 子树。
+ */
+export function openLarkBitableImportDialog(
+  options?: OpenLarkBitableImportOptions,
+): void {
+  if (typeof document === 'undefined') return;
+
+  const host = document.createElement('div');
+  host.setAttribute('data-lark-bitable-import-root', '');
+  document.body.appendChild(host);
+
+  const root = createRoot(host);
+
+  const teardown = (result: 'success' | 'cancel') => {
+    root.unmount();
+    host.remove();
+    if (result === 'success') {
+      options?.onSuccess?.();
+    }
+  };
+
+  root.render(
+    <LarkBitableImportDialogLayer
+      onFinish={teardown}
+    />,
+  );
+}
+
+/** Discover 的 label/icon + 点击拉起命令式弹窗（与 Lark 插件一体）。 */
+export function LarkImportHeaderButton({
+  button,
+  onImportSuccess,
+}: {
+  button: ImportButtonUI;
+  onImportSuccess: () => void | Promise<void>;
+}) {
+  const Pack = LucideIcons as unknown as Record<
+    string,
+    ComponentType<{ className?: string }>
+  >;
+  const IconComp = Pack[button.icon] ?? LucideIcons.CloudDownload;
+
+  return (
+    <Button
+      type="button"
+      variant={button.variant ?? 'outline'}
+      onClick={() => {
+        openLarkBitableImportDialog({
+          onSuccess: () => {
+            void onImportSuccess();
+          },
+        });
+      }}
+      style={
+        button.color
+          ? { borderColor: button.color, color: button.color }
+          : undefined
+      }
+    >
+      <IconComp className="h-4 w-4 mr-2" />
+      {button.label}
+    </Button>
+  );
+}
+

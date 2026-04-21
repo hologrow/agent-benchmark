@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   getAllAgents,
   createAgent,
-  Agent,
   AgentType
 } from '@/lib/db';
 

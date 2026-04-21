@@ -29,6 +29,7 @@ import { Eye, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { formatDateTimeLocal } from "@/lib/format-datetime";
 import { api } from "@/lib/api";
 import type { Benchmark } from "@/types/api";
 
@@ -491,14 +492,12 @@ export default function BenchmarkPage() {
                     <TableCell>{getStatusBadge(execution.status)}</TableCell>
                     <TableCell>
                       {execution.started_at
-                        ? new Date(execution.started_at).toLocaleString("zh-CN")
+                        ? formatDateTimeLocal(execution.started_at)
                         : "-"}
                     </TableCell>
                     <TableCell>
                       {execution.completed_at
-                        ? new Date(execution.completed_at).toLocaleString(
-                            "zh-CN",
-                          )
+                        ? formatDateTimeLocal(execution.completed_at)
                         : "-"}
                     </TableCell>
                     <TableCell className="text-right">

@@ -39,6 +39,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { api } from '@/lib/api';
+import { formatDateTimeLocal } from '@/lib/format-datetime';
 import type { Model } from '@/types/api';
 
 // Extend the shared Model type with local properties
@@ -167,10 +168,6 @@ export function ModelManagement() {
     setDialogOpen(true);
   };
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('en-US');
-  };
-
   const maskApiKey = (key: string | undefined) => {
     if (!key) return '-';
     if (key.length <= 8) return '****';
@@ -238,7 +235,7 @@ export function ModelManagement() {
                         '-'
                       )}
                     </TableCell>
-                    <TableCell>{formatDate(model.created_at)}</TableCell>
+                    <TableCell>{formatDateTimeLocal(model.created_at)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(model)}>

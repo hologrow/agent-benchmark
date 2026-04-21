@@ -1,7 +1,6 @@
 /**
- * Lark/Feishu Import Plugin
- *
- * Provides test case import capability using Lark SDK
+ * Lark/Feishu — **服务端注册**：`LarkPlugin` + `./bitable`（Lark SDK，供 API/registry 使用）。
+ * **默认开发者入口在浏览器**：同目录 `client.ts`、`import-dialog.tsx`（`openLarkBitableImportDialog` 等）。
  */
 
 import { Client, Domain } from "@larksuiteoapi/node-sdk";
@@ -10,9 +9,22 @@ import {
   Capability,
   type CapabilityInterfaces,
   type ImportButtonUI,
+  type ImportSchemaField,
+  type ImportSchemaSource,
   type TestCaseData,
 } from "../../";
-import type { IPlugin } from "../../types";
+import type {
+  IPlugin,
+  LegacySyncCatalogQuery,
+  LegacySyncCatalogResult,
+  LegacySyncFetchResult,
+  SyncTestCasesToDatabaseInput,
+} from "../../types";
+import {
+  runLegacySyncCatalog,
+  fetchLegacyBitableRecordsForSync,
+  createEnvBasedLarkClient,
+} from "./bitable";
 
 interface LarkConfig {
   appId: string;
@@ -28,6 +40,11 @@ export class LarkPlugin extends BasePlugin {
   getImportDialog!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["getImportDialog"];
   openImportDialog!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["openImportDialog"];
   importItems!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["importItems"];
+  listImportSources!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["listImportSources"];
+  listImportTables!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["listImportTables"];
+  listImportFields!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["listImportFields"];
+  getLegacySyncCatalog!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["getLegacySyncCatalog"];
+  fetchLegacySyncRecords!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["fetchLegacySyncRecords"];
 
   constructor() {
     super({
@@ -73,6 +90,52 @@ export class LarkPlugin extends BasePlugin {
     this.getImportDialog = this._getImportDialog.bind(this);
     this.openImportDialog = this._openImportDialog.bind(this);
     this.importItems = this._importItems.bind(this);
+    this.listImportSources = this._listImportSources.bind(this);
+    this.listImportTables = this._listImportTables.bind(this);
+    this.listImportFields = this._listImportFields.bind(this);
+    this.getLegacySyncCatalog = this._getLegacySyncCatalog.bind(this);
+    this.fetchLegacySyncRecords = this._fetchLegacySyncRecords.bind(this);
+  }
+
+  /** Prefer integration credentials; fall back to env vars when config is empty. */
+  private getClientForLegacySync(): Client {
+    const cfg = this.getLarkConfig();
+    if (cfg.appId && cfg.appSecret) {
+      return this.getClient();
+    }
+    return createEnvBasedLarkClient();
+  }
+
+  private async _getLegacySyncCatalog(
+    query: LegacySyncCatalogQuery,
+  ): Promise<LegacySyncCatalogResult> {
+    return runLegacySyncCatalog(this.getClientForLegacySync(), query);
+  }
+
+  private async _fetchLegacySyncRecords(
+    input: SyncTestCasesToDatabaseInput,
+  ): Promise<LegacySyncFetchResult> {
+    return fetchLegacyBitableRecordsForSync(
+      this.getClientForLegacySync(),
+      input,
+    );
+  }
+
+  private async _listImportSources(): Promise<ImportSchemaSource[]> {
+    return this.listBases();
+  }
+
+  private async _listImportTables(
+    sourceId: string,
+  ): Promise<ImportSchemaSource[]> {
+    return this.listTables(sourceId);
+  }
+
+  private async _listImportFields(
+    sourceId: string,
+    tableId: string,
+  ): Promise<ImportSchemaField[]> {
+    return this.listTableFields(sourceId, tableId);
   }
 
   private getLarkConfig(): LarkConfig {
@@ -172,17 +235,18 @@ export class LarkPlugin extends BasePlugin {
   /**
    * Open import dialog
    */
-  private async _openImportDialog(_options: {
+  private async _openImportDialog(options: {
     onSuccess?: (testCases: TestCaseData[]) => void;
     onError?: (error: string) => void;
     onCancel?: () => void;
   }): Promise<TestCaseData[] | null> {
-    // Server-side returns null, UI is handled by frontend
+    void options;
     return null;
   }
 
   /**
-   * Batch import test cases
+   * Batch import test cases（仅拉取并解析，不落库）。
+   * 浏览器导入向导应走 POST `/api/test-cases/sync`（legacy sync + 宿主人库）。
    * @param items Format: ["baseId/tableId"]
    */
   private async _importItems(

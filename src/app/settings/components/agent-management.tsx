@@ -42,21 +42,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { formatDateTimeLocal } from '@/lib/format-datetime';
 import type { Agent } from '@/types/api';
 
 type AgentType = 'openclaw' | 'hermes' | 'other';
 
 interface LocalAgent extends Agent {
   command?: string;
-}
-
-interface OpenClawConfig {
-  url: string;
-  token: string;
-}
-
-interface CommandAgentConfig {
-  command: string;
 }
 
 const formSchema = z.object({
@@ -223,10 +215,6 @@ export function AgentManagement() {
     setDialogOpen(true);
   };
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('zh-CN');
-  };
-
   const getAgentTypeLabel = (type: AgentType) => {
     switch (type) {
       case 'openclaw':
@@ -307,7 +295,7 @@ export function AgentManagement() {
                         })()
                       )}
                     </TableCell>
-                    <TableCell>{formatDate(agent.created_at)}</TableCell>
+                    <TableCell>{formatDateTimeLocal(agent.created_at)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(agent)}>

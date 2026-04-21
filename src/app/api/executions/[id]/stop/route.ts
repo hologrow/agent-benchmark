@@ -60,7 +60,7 @@ export async function POST(
         // Still running — SIGKILL
         process.kill(pid, 'SIGKILL');
         console.log(`[StopExecution] PID ${pid} force killed`);
-      } catch (e) {
+      } catch {
         // Already gone
         console.log(`[StopExecution] PID ${pid} terminated gracefully`);
       }

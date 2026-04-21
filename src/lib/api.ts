@@ -6,6 +6,12 @@
  */
 
 import type {
+  LegacySyncCatalogResult,
+  LegacySyncFetchResult,
+  SyncTestCasesToDatabaseInput,
+  SyncTestCasesToDatabaseResult,
+} from '@/lib/plugins/types';
+import type {
   // Entities
   Benchmark,
   BenchmarkExecution,
@@ -24,7 +30,8 @@ import type {
   CreateModelRequest,
   CreateEvaluatorRequest,
   UpdateIntegrationRequest,
-  LarkImportRequest,
+  ImportTestCasesRequest,
+  PluginImportCommand,
   RLTrainingConfig,
 
   // Responses
@@ -43,10 +50,10 @@ import type {
   CreateEvaluatorResponse,
   ListIntegrationsResponse,
   DiscoverPluginsResponse,
-  ListLarkBasesResponse,
+  ListImportSourcesResponse,
   ListLarkTablesResponse,
   ListLarkFieldsResponse,
-  LarkImportResponse,
+  ImportTestCasesResponse,
   StartExecutionResponse,
   StopExecutionResponse,
   ExecutionHealthResponse,
@@ -170,6 +177,54 @@ export const testCasesApi = {
   delete: (id: number): Promise<SuccessResponse> =>
     apiRequest<SuccessResponse>(`/api/test-cases/${id}`, {
       method: 'DELETE',
+    }),
+
+  /**
+   * Legacy external-table sync catalog (GET /api/test-cases/sync).
+   * @param params.pluginId — e.g. `"lark"`
+   */
+  legacySyncCatalog: (params: {
+    pluginId: string;
+    appToken: string;
+    tableId?: string;
+  }): Promise<LegacySyncCatalogResult> => {
+    const q = new URLSearchParams({
+      pluginId: params.pluginId,
+      appToken: params.appToken,
+    });
+    if (params.tableId) {
+      q.set('tableId', params.tableId);
+    }
+    return apiRequest<LegacySyncCatalogResult>(
+      `/api/test-cases/sync?${q.toString()}`
+    );
+  },
+
+  /**
+   * Legacy external-table full sync into DB (POST /api/test-cases/sync).
+   * @param pluginId — e.g. `"lark"`
+   * @param payload — matches {@link SyncTestCasesToDatabaseInput} fields (pluginId is passed separately).
+   */
+  legacySyncToDatabase: (
+    pluginId: string,
+    payload: SyncTestCasesToDatabaseInput,
+  ): Promise<SyncTestCasesToDatabaseResult> =>
+    apiRequest<SyncTestCasesToDatabaseResult>('/api/test-cases/sync', {
+      method: 'POST',
+      body: JSON.stringify({ ...payload, pluginId }),
+    }),
+
+  /**
+   * Lark/Bitable fetch only (`persist: false`). Pair with browser ctx:
+   * 浏览器侧：`createBrowserPluginHostContext`（`plugins/host/browser`）→ `host.externalTableSync.persistAfterFetch`。
+   */
+  legacySyncFetchOnly: (
+    pluginId: string,
+    payload: SyncTestCasesToDatabaseInput,
+  ): Promise<{ fetchResult: LegacySyncFetchResult }> =>
+    apiRequest<{ fetchResult: LegacySyncFetchResult }>('/api/test-cases/sync', {
+      method: 'POST',
+      body: JSON.stringify({ ...payload, pluginId, persist: false }),
     }),
 };
 
@@ -438,6 +493,16 @@ export const integrationsApi = {
 
 // ==================== Plugins API ====================
 
+async function invokePlugin<T>(
+  pluginId: string,
+  command: PluginImportCommand,
+): Promise<T> {
+  return apiRequest<T>(`/api/plugins/${encodeURIComponent(pluginId)}`, {
+    method: 'POST',
+    body: JSON.stringify(command),
+  });
+}
+
 export const pluginsApi = {
   /**
    * Discover all available plugin capabilities
@@ -446,32 +511,37 @@ export const pluginsApi = {
     apiRequest<DiscoverPluginsResponse>('/api/plugins/discover'),
 
   /**
-   * Get Lark bases
+   * Single route for all import-plugin operations (action + payload).
+   * POST /api/plugins/:pluginId — body: { action, payload? }
    */
-  larkBases: (): Promise<ListLarkBasesResponse> =>
-    apiRequest<ListLarkBasesResponse>('/api/plugins/lark/bases'),
+  invoke: invokePlugin,
 
-  /**
-   * Get Lark tables in a base
-   */
-  larkTables: (baseId: string): Promise<ListLarkTablesResponse> =>
-    apiRequest<ListLarkTablesResponse>(`/api/plugins/lark/tables?baseId=${encodeURIComponent(baseId)}`),
+  importSources: (pluginId: string): Promise<ListImportSourcesResponse> =>
+    invokePlugin(pluginId, { action: 'listImportSources' }),
 
-  /**
-   * Get Lark fields in a table
-   */
-  larkFields: (baseId: string, tableId: string): Promise<ListLarkFieldsResponse> =>
-    apiRequest<ListLarkFieldsResponse>(
-      `/api/plugins/lark/fields?baseId=${encodeURIComponent(baseId)}&tableId=${encodeURIComponent(tableId)}`
-    ),
+  importTables: (pluginId: string, sourceId: string): Promise<ListLarkTablesResponse> =>
+    invokePlugin(pluginId, {
+      action: 'listImportTables',
+      payload: { sourceId },
+    }),
 
-  /**
-   * Import from Lark
-   */
-  larkImport: (data: LarkImportRequest): Promise<LarkImportResponse> =>
-    apiRequest<LarkImportResponse>('/api/plugins/lark/import', {
-      method: 'POST',
-      body: JSON.stringify(data),
+  importFields: (
+    pluginId: string,
+    sourceId: string,
+    tableId: string,
+  ): Promise<ListLarkFieldsResponse> =>
+    invokePlugin(pluginId, {
+      action: 'listImportFields',
+      payload: { sourceId, tableId },
+    }),
+
+  importTestCases: (
+    pluginId: string,
+    data: ImportTestCasesRequest,
+  ): Promise<ImportTestCasesResponse> =>
+    invokePlugin(pluginId, {
+      action: 'importTestCases',
+      payload: { items: data.items, fieldMapping: data.fieldMapping },
     }),
 };
 

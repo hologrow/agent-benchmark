@@ -22,3 +22,8 @@ export * from './types';
 export * from './registry';
 export * from './base';
 export * from './loader';
+
+/** 插件宿主（服务端 / 类型 / 无 UI）。浏览器请用 `plugins/host/browser`。 */
+export type { PluginHostContext, TestCasePersistencePort } from './host/types';
+export { createServerPluginHostContext } from './host/server';
+export { applyExternalTableSyncWithPersistence } from './host/apply-external-sync';

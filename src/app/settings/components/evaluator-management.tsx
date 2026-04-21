@@ -49,6 +49,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { formatDateTimeLocal } from "@/lib/format-datetime";
 import type { Model, Evaluator } from "@/types/api";
 
 // Extend Evaluator with local properties
@@ -215,9 +216,9 @@ export function EvaluatorManagement() {
       parsedConfig = JSON.parse(evaluator.config || '{}') as Record<string, unknown>;
       if (parsedConfig.evaluation_prompt && typeof parsedConfig.evaluation_prompt === 'string') {
         promptTemplate = parsedConfig.evaluation_prompt;
-        // Remove evaluation_prompt from config for the form
-        const { evaluation_prompt: _, ...restConfig } = parsedConfig;
-        parsedConfig = restConfig;
+        const rest = { ...parsedConfig };
+        delete rest.evaluation_prompt;
+        parsedConfig = rest;
       }
     } catch {
       // Use defaults
@@ -261,10 +262,6 @@ export function EvaluatorManagement() {
       config: JSON.stringify({ ...defaultConfig, evaluation_prompt: undefined }, null, 2),
     });
     setDialogOpen(true);
-  };
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString("en-US");
   };
 
   return (
@@ -327,7 +324,7 @@ export function EvaluatorManagement() {
                     <TableCell className="font-mono text-sm">
                       {evaluator.script_path}
                     </TableCell>
-                    <TableCell>{formatDate(evaluator.created_at)}</TableCell>
+                    <TableCell>{formatDateTimeLocal(evaluator.created_at)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button

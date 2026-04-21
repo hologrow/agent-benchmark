@@ -26,6 +26,7 @@ import {
   Stethoscope,
 } from "lucide-react";
 import { toast } from "sonner";
+import { formatDateTimeLocal } from "@/lib/format-datetime";
 import {
   Dialog,
   DialogContent,
@@ -320,7 +321,7 @@ export default function BenchmarkDetailsPage() {
                   <span>{execution.name || `Execution #${execution.id}`}</span>
                   <span className="text-xs opacity-80">
                     {execution.created_at
-                      ? new Date(execution.created_at).toLocaleString("en-US", {
+                      ? formatDateTimeLocal(execution.created_at, {
                           month: "short",
                           day: "numeric",
                           hour: "2-digit",
