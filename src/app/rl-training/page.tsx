@@ -562,8 +562,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
         <div>
           <h1 className="text-3xl font-bold">强化训练</h1>
           <p className="text-muted-foreground mt-2">
-            Teacher 模型与 Student Agent 直接对话，通过指令-执行-反馈循环提升
-            Agent 能力
+            监督进化，通过指令-执行-反馈循环提升 Agent 能力
           </p>
         </div>
         <Button

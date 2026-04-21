@@ -575,12 +575,14 @@ export function getExecutionDetails(executionId: number) {
       e.forbidden_points_violated,
       et.trace_id,
       et.synced_at as trace_synced_at,
-      et.trace_content
+      et.trace_content,
+      dr.diagnosis_report
     FROM benchmark_results br
     JOIN agents a ON br.agent_id = a.id
     JOIN test_cases tc ON br.test_case_id = tc.id
     LEFT JOIN evaluations e ON e.result_id = br.id
     LEFT JOIN execution_traces et ON et.result_id = br.id
+    LEFT JOIN diagnosis_results dr ON dr.result_id = br.id
     WHERE br.execution_id = ?
     ORDER BY br.id
   `).all(executionId);
@@ -974,4 +976,33 @@ export function updateResult(id: number, result: Partial<Pick<Result, 'status' |
 
   db.prepare(`UPDATE benchmark_results SET ${sets.join(', ')} WHERE id = ?`).run(...values);
   return db.prepare('SELECT * FROM benchmark_results WHERE id = ?').get(id) as Result;
+}
+
+// ==================== Diagnosis Results 相关操作 ====================
+
+export interface DiagnosisResult {
+  id: number;
+  result_id: number;
+  diagnosis_report: string;
+  model_id: number | null;
+  created_at: string;
+}
+
+export function getDiagnosisResultByResultId(result_id: number): DiagnosisResult | undefined {
+  const db = getDatabase();
+  return db.prepare('SELECT * FROM diagnosis_results WHERE result_id = ?').get(result_id) as DiagnosisResult | undefined;
+}
+
+export function createDiagnosisResult(diagnosis: Omit<DiagnosisResult, 'id' | 'created_at'>): DiagnosisResult {
+  const db = getDatabase();
+  const result = db.prepare(
+    'INSERT INTO diagnosis_results (result_id, diagnosis_report, model_id) VALUES (?, ?, ?)'
+  ).run(diagnosis.result_id, diagnosis.diagnosis_report, diagnosis.model_id ?? null);
+
+  return db.prepare('SELECT * FROM diagnosis_results WHERE id = ?').get(result.lastInsertRowid) as DiagnosisResult;
+}
+
+export function deleteDiagnosisResultByResultId(result_id: number): void {
+  const db = getDatabase();
+  db.prepare('DELETE FROM diagnosis_results WHERE result_id = ?').run(result_id);
 }

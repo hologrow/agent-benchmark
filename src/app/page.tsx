@@ -70,6 +70,7 @@ interface BenchmarkResult {
   evaluation_report: string | null;
   key_points_met: string | null;
   forbidden_points_violated: string | null;
+  diagnosis_report: string | null;
 }
 
 interface ExecutionHistory {

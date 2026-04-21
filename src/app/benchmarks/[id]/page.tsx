@@ -23,6 +23,7 @@ import {
   ExternalLink,
   RefreshCw,
   Square,
+  Stethoscope,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -61,7 +62,13 @@ interface BenchmarkResult {
   execution_id: number;
   agent_id: number;
   test_case_id: number;
-  status: "pending" | "running" | "completed" | "failed" | "timeout" | "cancelled";
+  status:
+    | "pending"
+    | "running"
+    | "completed"
+    | "failed"
+    | "timeout"
+    | "cancelled";
   actual_output: string | null;
   execution_steps: string | null; // 解析后的执行步骤
   execution_answer: string | null; // 解析后的执行答案
@@ -87,6 +94,7 @@ interface BenchmarkResult {
   trace_id: string | null;
   trace_synced_at: string | null;
   trace_content: string | null;
+  diagnosis_report: string | null;
 }
 
 interface ExecutionWithDetails extends BenchmarkExecution {
@@ -305,13 +313,20 @@ export default function BenchmarkDetailsPage() {
                   onClick={() => handleTabChange(execution.id.toString())}
                   className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                     activeTab === execution.id.toString()
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground hover:bg-muted/80"
                   }`}
                 >
                   <span>{execution.name || `执行 #${execution.id}`}</span>
                   <span className="text-xs opacity-80">
-                    {execution.created_at ? new Date(execution.created_at).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                    {execution.created_at
+                      ? new Date(execution.created_at).toLocaleString("zh-CN", {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : ""}
                   </span>
                   {getStatusBadge(execution.status)}
                 </button>
@@ -352,6 +367,11 @@ function ExecutionDetails({
   const [reevaluating, setReevaluating] = useState(false);
   const [syncingTraces, setSyncingTraces] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnosisReport, setDiagnosisReport] = useState<string | null>(null);
+  const [diagnosisDialogOpen, setDiagnosisDialogOpen] = useState(false);
+  const [currentDiagnosisResult, setCurrentDiagnosisResult] =
+    useState<BenchmarkResult | null>(null);
 
   const handleSyncTraces = async () => {
     setSyncingTraces(true);
@@ -412,7 +432,9 @@ function ExecutionDetails({
 
       if (response.ok) {
         const data = await response.json();
-        toast.success(`执行已停止 (PID: ${data.pid}, 已取消 ${data.cancelledResultsCount} 个任务)`);
+        toast.success(
+          `执行已停止 (PID: ${data.pid}, 已取消 ${data.cancelledResultsCount} 个任务)`,
+        );
         // 刷新页面以显示更新后的状态
         window.location.reload();
       } else {
@@ -425,6 +447,47 @@ function ExecutionDetails({
     } finally {
       setStopping(false);
     }
+  };
+
+  const handleDiagnose = async (result: BenchmarkResult, force = false) => {
+    setCurrentDiagnosisResult(result);
+
+    // 如果已有诊断报告且不强制重新诊断，直接显示
+    if (result.diagnosis_report && !force) {
+      setDiagnosisReport(result.diagnosis_report);
+      setDiagnosisDialogOpen(true);
+      return;
+    }
+
+    // 调用 API 进行诊断
+    setDiagnosing(true);
+    setDiagnosisReport(null);
+    try {
+      const response = await fetch(`/api/results/${result.id}/diagnose`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDiagnosisReport(data.diagnosis_report);
+        setDiagnosisDialogOpen(true);
+        toast.success("诊断完成");
+      } else {
+        const error = await response.json();
+        toast.error(error.error || "诊断失败");
+      }
+    } catch (error) {
+      console.error("Error diagnosing:", error);
+      toast.error("诊断失败");
+    } finally {
+      setDiagnosing(false);
+    }
+  };
+
+  const handleReDiagnose = async () => {
+    if (!currentDiagnosisResult) return;
+    await handleDiagnose(currentDiagnosisResult, true);
   };
 
   const completedCount = execution.results.filter(
@@ -657,14 +720,29 @@ function ExecutionDetails({
                 )}
               </TableCell>
               <TableCell className="text-right">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => openResultDialog(result)}
-                >
-                  <FileText className="h-4 w-4 mr-1" />
-                  查看
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openResultDialog(result)}
+                  >
+                    <FileText className="h-4 w-4 mr-1" />
+                    查看
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleDiagnose(result)}
+                    disabled={diagnosing}
+                    className="text-purple-600 border-purple-200 hover:bg-purple-50"
+                  >
+                    {diagnosing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Stethoscope className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))}
@@ -841,6 +919,47 @@ function ExecutionDetails({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 诊断结果对话框 */}
+      <Dialog open={diagnosisDialogOpen} onOpenChange={setDiagnosisDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="flex items-center gap-2">
+                  <Stethoscope className="h-5 w-5 text-purple-600" />
+                  AI 诊断报告
+                </DialogTitle>
+                <DialogDescription>
+                  基于大模型分析的测试用例诊断结果
+                </DialogDescription>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleReDiagnose}
+                disabled={diagnosing}
+                className="text-purple-600 border-purple-200 hover:bg-purple-50 mr-[80px]"
+              >
+                {diagnosing ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                ) : (
+                  <Stethoscope className="h-4 w-4 mr-1" />
+                )}
+                重新诊断
+              </Button>
+            </div>
+          </DialogHeader>
+
+          {diagnosisReport && (
+            <div className="mt-4">
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <Markdown content={diagnosisReport} />
+              </div>
             </div>
           )}
         </DialogContent>
