@@ -6,7 +6,7 @@ import {
   getBenchmarkDetails
 } from '@/lib/db';
 
-// GET /api/benchmarks/:id - 获取 benchmark 配置详情
+// GET /api/benchmarks/:id - benchmark detail
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,7 +32,7 @@ export async function GET(
   }
 }
 
-// PUT /api/benchmarks/:id - 更新 benchmark 配置
+// PUT /api/benchmarks/:id - update benchmark
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -78,7 +78,7 @@ export async function PUT(
   }
 }
 
-// DELETE /api/benchmarks/:id - 删除 benchmark 配置
+// DELETE /api/benchmarks/:id - delete benchmark
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

@@ -11,7 +11,7 @@ import {
 } from '@/lib/db';
 import { syncExecutionTraces } from '@/lib/execution-trace/orchestrator';
 
-// POST /api/benchmarks/:id/start - 启动 benchmark 执行
+// POST /api/benchmarks/:id/start - start benchmark run
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -28,7 +28,6 @@ export async function POST(
       );
     }
 
-    // 创建新的执行记录
     const execution = createExecution({
       benchmark_id: benchmarkId,
       name: null,
@@ -37,19 +36,15 @@ export async function POST(
       completed_at: null
     });
 
-    // 解析 agent_ids 和 test_case_ids
     const agentIds = JSON.parse(benchmark.agent_ids) as number[];
     let testCaseIds: number[] = [];
 
-    // 优先从 test_set_id 获取用例
     if (benchmark.test_set_id) {
       testCaseIds = getTestSetCaseIds(benchmark.test_set_id);
     } else if (benchmark.test_case_ids) {
-      // 向后兼容
       testCaseIds = JSON.parse(benchmark.test_case_ids) as number[];
     }
 
-    // 为每个 agent × test_case 组合创建结果记录
     for (const agentId of agentIds) {
       for (const testCaseId of testCaseIds) {
         createResult({
@@ -71,82 +66,73 @@ export async function POST(
       }
     }
 
-    // 创建日志目录
     const logsDir = join(process.cwd(), 'data', 'logs');
     try {
       mkdirSync(logsDir, { recursive: true });
     } catch {
-      // 目录已存在
+      // directory may already exist
     }
 
-    // 创建日志文件
     const logFileName = `benchmark_execution_${execution.id}_${new Date().toISOString().replace(/[:.]/g, '-')}.log`;
     const logFilePath = join(logsDir, logFileName);
     const logStream = createWriteStream(logFilePath, { flags: 'a' });
 
-    console.log(`[Benchmark ${execution.id}] 启动执行，日志文件: ${logFilePath}`);
+    console.log(`[Benchmark ${execution.id}] Started; log file: ${logFilePath}`);
 
-    // 在后台启动 Python 脚本
     const scriptPath = join(process.cwd(), 'scripts', 'run_benchmark.py');
     const pythonProcess = spawn('python3', [scriptPath, execution.id.toString()], {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
-    // 保存进程 ID 到数据库
     if (pythonProcess.pid) {
       updateExecution(execution.id, { pid: pythonProcess.pid });
-      console.log(`[Benchmark ${execution.id}] 进程 PID: ${pythonProcess.pid}`);
+      console.log(`[Benchmark ${execution.id}] Python PID: ${pythonProcess.pid}`);
     }
 
-    // 将 stdout 同时输出到控制台和日志文件
     pythonProcess.stdout?.on('data', (data) => {
       const output = data.toString();
       console.log(`[Benchmark ${execution.id}] ${output}`);
       logStream.write(output);
     });
 
-    // 将 stderr 同时输出到控制台和日志文件
     pythonProcess.stderr?.on('data', (data) => {
       const output = data.toString();
       console.error(`[Benchmark ${execution.id}] ${output}`);
       logStream.write(output);
     });
 
-    // 进程结束时关闭日志流并自动同步 Langfuse Traces，然后触发评估
     pythonProcess.on('close', async (code) => {
-      const message = `\n[Benchmark ${execution.id}] 进程退出，退出码: ${code}\n`;
+      const message = `\n[Benchmark ${execution.id}] Process exited with code ${code}\n`;
       console.log(message);
       logStream.write(message);
       logStream.end();
 
-      // 自动同步 Langfuse Traces 并触发评估
       if (code === 0) {
-        console.log(`[Benchmark ${execution.id}] 执行成功，开始自动同步 Langfuse Traces...`);
+        console.log(`[Benchmark ${execution.id}] Run finished; syncing execution traces...`);
         try {
           const syncResult = await syncExecutionTraces(execution.id);
-          console.log(`[Benchmark ${execution.id}] Trace 同步完成:`, syncResult);
+          console.log(`[Benchmark ${execution.id}] Trace sync done:`, syncResult);
 
-          // 检查是否配置了评估器，如果配置了则触发评估
           if (benchmark.evaluator_id) {
-            console.log(`[Benchmark ${execution.id}] 准备触发评估...`);
+            console.log(`[Benchmark ${execution.id}] Triggering evaluation...`);
             try {
               const evalResponse = await fetch(`http://localhost:3000/api/executions/${execution.id}/evaluate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
               });
               if (evalResponse.ok) {
-                console.log(`[Benchmark ${execution.id}] 评估已启动`);
+                console.log(`[Benchmark ${execution.id}] Evaluation started`);
               } else {
                 const errorData = await evalResponse.json();
-                console.error(`[Benchmark ${execution.id}] 评估启动失败:`, errorData);
+                console.error(`[Benchmark ${execution.id}] Evaluation start failed:`, errorData);
               }
             } catch (evalError) {
-              console.error(`[Benchmark ${execution.id}] 触发评估失败:`, evalError);
+              console.error(`[Benchmark ${execution.id}] Failed to trigger evaluation:`, evalError);
             }
           }
         } catch (syncError) {
-          console.error(`[Benchmark ${execution.id}] Trace 同步失败:`, syncError);
+          console.error(`[Benchmark ${execution.id}] Trace sync failed:`, syncError);
         }
       }
     });

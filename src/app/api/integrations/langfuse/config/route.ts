@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getIntegrationByType } from "@/lib/db";
 
-// GET /api/integrations/langfuse/config - 获取 Langfuse 配置
+// GET /api/integrations/langfuse/config - public Langfuse UI URL hints
 export async function GET() {
   try {
     const integration = getIntegrationByType("langfuse");
@@ -18,7 +18,7 @@ export async function GET() {
 
     return NextResponse.json({
       enabled: true,
-      baseUrl: baseUrl.replace(/\/$/, ""), // 移除末尾斜杠
+      baseUrl: baseUrl.replace(/\/$/, ""), // trim trailing slash
     });
   } catch (error) {
     console.error("Error fetching Langfuse config:", error);

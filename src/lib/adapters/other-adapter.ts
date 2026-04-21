@@ -1,8 +1,5 @@
 /**
- * Other Adapter
- * 执行通用命令行Agent (默认适配器)
- *
- * 特点: 支持任何命令行工具，通过{{prompt}}和{{execution_id}}变量注入参数
+ * Default shell adapter — any CLI wired via command template and {{prompt}} / {{execution_id}}.
  */
 
 import { exec } from 'child_process';
@@ -12,7 +9,7 @@ import { parseAgentConfig, escapeShellPrompt, replaceCommandVariables } from './
 
 const execAsync = promisify(exec);
 
-// 超时时间: 10分钟
+// 10 minute timeout
 const EXECUTION_TIMEOUT = 10 * 60 * 1000;
 
 export class OtherAdapter implements AgentAdapter {
@@ -20,18 +17,14 @@ export class OtherAdapter implements AgentAdapter {
     const startTime = Date.now();
 
     try {
-      // 解析配置
       const config = parseAgentConfig(options.agent) as CommandAgentConfig;
 
-      // 验证配置
       if (!config.command) {
         throw new Error('Command is required');
       }
 
-      // 转义prompt
       const escapedPrompt = escapeShellPrompt(options.prompt);
 
-      // 替换变量
       const command = replaceCommandVariables(config.command, {
         prompt: escapedPrompt,
         execution_id: options.executionId,
@@ -40,7 +33,6 @@ export class OtherAdapter implements AgentAdapter {
       console.log(`[OtherAdapter] Executing command:`, command);
       console.log(`[OtherAdapter] Full prompt:`, options.prompt);
 
-      // 执行命令
       const { stdout, stderr } = await execAsync(command, {
         timeout: EXECUTION_TIMEOUT,
         maxBuffer: 50 * 1024 * 1024, // 50MB buffer

@@ -43,7 +43,7 @@ export function getTestSetById(id: number): (TestSet & { test_cases: any[] }) | 
   return { ...testSet, test_cases: testCases };
 }
 
-// 创建测试集
+// Create test set and items
 export function createTestSet(
   testSet: Omit<TestSet, 'id' | 'created_at' | 'updated_at'>,
   testCaseIds: number[]
@@ -56,7 +56,7 @@ export function createTestSet(
 
   const testSetId = result.lastInsertRowid as number;
 
-  // 添加测试用例关联
+  // Link test cases
   const insertItem = db.prepare(
     'INSERT INTO test_set_items (test_set_id, test_case_id, order_index) VALUES (?, ?, ?)'
   );
@@ -68,7 +68,7 @@ export function createTestSet(
   return getTestSetById(testSetId)!;
 }
 
-// 更新测试集
+// Update test set
 export function updateTestSet(
   id: number,
   updates: Partial<Omit<TestSet, 'id' | 'created_at' | 'updated_at'>>,
@@ -90,12 +90,12 @@ export function updateTestSet(
     db.prepare(`UPDATE test_sets SET ${sets.join(', ')} WHERE id = ?`).run(...values);
   }
 
-  // 更新测试用例关联
+  // Update test case associations
   if (testCaseIds !== undefined) {
-    // 删除旧关联
+    // Delete old associations
     db.prepare('DELETE FROM test_set_items WHERE test_set_id = ?').run(id);
 
-    // 添加新关联
+    // Add new associations
     const insertItem = db.prepare(
       'INSERT INTO test_set_items (test_set_id, test_case_id, order_index) VALUES (?, ?, ?)'
     );
@@ -108,14 +108,14 @@ export function updateTestSet(
   return getTestSetById(id)!;
 }
 
-// 删除测试集
+// Delete test set
 export function deleteTestSet(id: number): void {
   const db = getDatabase();
-  // 关联记录会通过外键级联删除
+  // Associated records will be cascade deleted via foreign key
   db.prepare('DELETE FROM test_sets WHERE id = ?').run(id);
 }
 
-// 获取测试集的所有测试用例ID
+// Get all test case IDs for a test set
 export function getTestSetCaseIds(testSetId: number): number[] {
   const db = getDatabase();
   const items = db.prepare(
@@ -125,16 +125,16 @@ export function getTestSetCaseIds(testSetId: number): number[] {
   return items.map(item => item.test_case_id);
 }
 
-// ==================== 数据迁移函数 ====================
+// ==================== Data Migration Functions ====================
 
-// 将现有的 test_case_ids 迁移到 test_set_items
+// Migrate existing test_case_ids to test_set_items
 export function migrateTestCaseIdsToTestSets(): { migrated: number; errors: string[] } {
   const db = getDatabase();
   const errors: string[] = [];
   let migrated = 0;
 
   try {
-    // 查找所有有 test_case_ids 但没有 test_set_id 的 benchmark
+    // Find all benchmarks with test_case_ids but no test_set_id
     const benchmarks = db.prepare(
       "SELECT id, name, test_case_ids FROM benchmarks WHERE test_case_ids IS NOT NULL AND test_case_ids != '[]' AND test_set_id IS NULL"
     ).all() as { id: number; name: string; test_case_ids: string }[];
@@ -145,14 +145,14 @@ export function migrateTestCaseIdsToTestSets(): { migrated: number; errors: stri
 
         if (testCaseIds.length === 0) continue;
 
-        // 创建测试集
+        // Create test set
         const testSetResult = db.prepare(
           'INSERT INTO test_sets (name, description, source) VALUES (?, ?, ?)'
-        ).run(`${benchmark.name} - 默认测试集`, '自动迁移的测试集', 'manual');
+        ).run(`${benchmark.name} - Default Test Set`, 'Auto-migrated test set', 'manual');
 
         const testSetId = testSetResult.lastInsertRowid as number;
 
-        // 添加测试用例关联
+        // Add test case associations
         const insertItem = db.prepare(
           'INSERT INTO test_set_items (test_set_id, test_case_id, order_index) VALUES (?, ?, ?)'
         );
@@ -161,7 +161,7 @@ export function migrateTestCaseIdsToTestSets(): { migrated: number; errors: stri
           insertItem.run(testSetId, testCaseIds[i], i);
         }
 
-        // 更新 benchmark
+        // Update benchmark
         db.prepare('UPDATE benchmarks SET test_set_id = ? WHERE id = ?').run(testSetId, benchmark.id);
 
         migrated++;

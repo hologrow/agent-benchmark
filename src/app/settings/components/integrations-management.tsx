@@ -37,6 +37,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Loader2, ExternalLink, Settings, Puzzle } from "lucide-react";
+import { api } from "@/lib/api";
+import type { Integration } from "@/types/api";
 
 // Plugin metadata definitions
 interface PluginMeta {
@@ -59,17 +61,7 @@ interface ConfigField {
   options?: { label: string; value: string }[];
 }
 
-interface Integration {
-  id: number;
-  name: string;
-  type: string;
-  enabled: number;
-  config: string;
-  created_at: string;
-  updated_at: string;
-}
-
-// 内置插件元数据
+// Bundled plugin metadata
 const BUILTIN_PLUGINS: PluginMeta[] = [
   {
     id: "langfuse",
@@ -172,8 +164,7 @@ export function IntegrationsManagement() {
 
   const fetchIntegrations = async () => {
     try {
-      const response = await fetch("/api/integrations");
-      const data = await response.json();
+      const data = await api.integrations.list();
       setIntegrations(data.integrations || []);
     } catch (error) {
       console.error("Error fetching integrations:", error);
@@ -192,7 +183,7 @@ export function IntegrationsManagement() {
 
     const integration = getIntegration(plugin.id);
     if (integration) {
-      setCurrentEnabled(integration.enabled === 1);
+      setCurrentEnabled(integration.enabled);
       try {
         const parsed = JSON.parse(integration.config);
         // Merge with defaults
@@ -226,28 +217,18 @@ export function IntegrationsManagement() {
 
     setSaving(true);
     try {
-      const response = await fetch("/api/integrations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: currentPlugin.id,
-          name: currentPlugin.name,
-          enabled: currentEnabled,
-          config: currentConfig,
-        }),
+      await api.integrations.update(currentPlugin.id, {
+        enabled: currentEnabled,
+        config: currentConfig,
       });
 
-      if (response.ok) {
-        toast.success(`${currentPlugin.name} configuration saved`);
-        setDialogOpen(false);
-        fetchIntegrations();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "Save failed");
-      }
+      toast.success(`${currentPlugin.name} configuration saved`);
+      setDialogOpen(false);
+      fetchIntegrations();
     } catch (error) {
       console.error("Error saving integration:", error);
-      toast.error("Save failed");
+      const message = error instanceof Error ? error.message : "Save failed";
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -260,21 +241,16 @@ export function IntegrationsManagement() {
     toast.info("Testing connection...");
 
     try {
-      const response = await fetch(`/api/integrations/${currentPlugin.id}/test`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(currentConfig),
-      });
+      const result = await api.integrations.testConnection(currentPlugin.id);
 
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success(data.message || "Connection test successful");
+      if (result.success) {
+        toast.success(result.message || "Connection test successful");
       } else {
-        toast.error(data.message || "Connection test failed");
+        toast.error(result.message || "Connection test failed");
       }
     } catch (error) {
-      toast.error("Error occurred during connection test");
+      const message = error instanceof Error ? error.message : "Error occurred during connection test";
+      toast.error(message);
     } finally {
       setTesting(false);
     }
@@ -282,7 +258,7 @@ export function IntegrationsManagement() {
 
   const toggleIntegration = async (plugin: PluginMeta) => {
     const integration = getIntegration(plugin.id);
-    const newEnabled = integration ? integration.enabled !== 1 : true;
+    const newEnabled = integration ? !integration.enabled : true;
 
     try {
       const config = integration
@@ -411,7 +387,7 @@ export function IntegrationsManagement() {
             <TableBody>
               {BUILTIN_PLUGINS.map((plugin) => {
                 const integration = getIntegration(plugin.id);
-                const isEnabled = integration?.enabled === 1;
+                const isEnabled = integration?.enabled;
 
                 return (
                   <TableRow key={plugin.id}>

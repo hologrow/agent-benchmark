@@ -5,7 +5,7 @@ import {
   deleteEvaluator
 } from '@/lib/db';
 
-// GET /api/evaluators/:id - 获取单个评估器
+// GET /api/evaluators/:id - one evaluator
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -31,7 +31,7 @@ export async function GET(
   }
 }
 
-// PUT /api/evaluators/:id - 更新评估器
+// PUT /api/evaluators/:id - update evaluator
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -69,7 +69,7 @@ export async function PUT(
   }
 }
 
-// DELETE /api/evaluators/:id - 删除评估器
+// DELETE /api/evaluators/:id - delete evaluator
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

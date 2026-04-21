@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Client, Domain } from "@larksuiteoapi/node-sdk";
 import { createTestCase, updateTestCase, getAllTestCases, createTestSet } from "@/lib/db";
 
-// 初始化 Lark 客户端
+// Env-based Lark / Feishu client (legacy sync path)
 function getLarkClient() {
   const appId = process.env.LARK_APP_ID || process.env.FEISHU_APP_ID;
   const appSecret =
@@ -24,17 +24,16 @@ function getLarkClient() {
   });
 }
 
-// 系统字段定义（可从多维表格映射的字段）
 const SYSTEM_FIELDS = [
-  { key: "input", label: "输入", required: true },
-  { key: "expected_output", label: "期望输出", required: false },
-  { key: "key_points", label: "关键点", required: false },
-  { key: "forbidden_points", label: "禁止点", required: false },
-  { key: "category", label: "分类", required: false },
-  { key: "how", label: "如何实现", required: false },
+  { key: "input", label: "Input", required: true },
+  { key: "expected_output", label: "Expected output", required: false },
+  { key: "key_points", label: "Key points", required: false },
+  { key: "forbidden_points", label: "Forbidden points", required: false },
+  { key: "category", label: "Category", required: false },
+  { key: "how", label: "How", required: false },
 ];
 
-// 解析多维表格记录为测试用例（支持列映射）
+/** Map Bitable row to test case using columnMapping (system field -> column name). */
 function parseRecordToTestCase(
   record: Record<string, unknown>,
   columnMapping: Record<string, string>,
@@ -67,18 +66,13 @@ function parseRecordToTestCase(
     fields[columnMapping["forbidden_points"] || ""] || "";
   const category = getFieldValue("category");
 
-  // input 为必填字段
   if (!input) {
     return null;
   }
 
-  // 自动生成 test_id（格式：TC_001）
   const test_id = `TC_${String(index + 1).padStart(3, "0")}`;
-  // 使用 input 的前 50 个字符作为 name
   const name = input.slice(0, 50);
-  // 使用 input 的前 200 个字符作为 description
   const description = input.slice(0, 200);
-  // 获取 how 字段（如何实现）
   const how = getFieldValue("how");
 
   let key_points: string[] = [];
@@ -136,12 +130,12 @@ export async function POST(request: NextRequest) {
     }
 
     const mapping = columnMapping || {
-      input: "输入",
-      expected_output: "期望输出",
-      key_points: "关键点",
-      forbidden_points: "禁止点",
-      category: "分类",
-      how: "如何实现",
+      input: "Input",
+      expected_output: "Expected output",
+      key_points: "Key points",
+      forbidden_points: "Forbidden points",
+      category: "Category",
+      how: "How",
     };
 
     const client = getLarkClient();
@@ -217,29 +211,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 创建测试集
     let testSet = null;
     if (shouldCreateTestSet && createdTestCaseIds.length > 0) {
       try {
-        // 获取文档信息用于命名
         let defaultTestSetName = testSetName;
+        const dateStr = new Date().toLocaleDateString('en-US');
         if (!defaultTestSetName) {
           try {
             const appInfo = await client.bitable.app.get({
               path: { app_token: appToken },
             });
             defaultTestSetName = appInfo.data?.app?.name
-              ? `${appInfo.data.app.name} - ${new Date().toLocaleDateString('zh-CN')}`
-              : `Lark同步 - ${new Date().toLocaleDateString('zh-CN')}`;
+              ? `${appInfo.data.app.name} - ${dateStr}`
+              : `Lark sync - ${dateStr}`;
           } catch {
-            defaultTestSetName = `Lark同步 - ${new Date().toLocaleDateString('zh-CN')}`;
+            defaultTestSetName = `Lark sync - ${dateStr}`;
           }
         }
 
         testSet = createTestSet(
           {
             name: defaultTestSetName,
-            description: testSetDescription || `从 Lark 多维表格同步的测试集，共 ${createdTestCaseIds.length} 个用例`,
+            description: testSetDescription || `Synced from Lark Bitable — ${createdTestCaseIds.length} test case(s)`,
             source: 'lark',
             source_url: `https://base.larkoffice.com/app/${appToken}/table/${tableId}`,
           },
@@ -247,7 +240,7 @@ export async function POST(request: NextRequest) {
         );
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
-        errors.push(`创建测试集失败: ${errorMsg}`);
+        errors.push(`Failed to create test set: ${errorMsg}`);
       }
     }
 
@@ -309,7 +302,7 @@ export async function GET(request: NextRequest) {
             code: response.code,
             isPermissionError,
             permissionHint: isPermissionError
-              ? "请在飞书开放平台为应用申请以下权限：bitable:app:readonly 或 bitable:app 或 base:table:read"
+              ? "Grant the app bitable:app:readonly, bitable:app, or base:table:read in Feishu / Lark developer console."
               : undefined,
           },
           { status: 400 },
@@ -344,7 +337,7 @@ export async function GET(request: NextRequest) {
           code: response.code,
           isPermissionError,
           permissionHint: isPermissionError
-            ? "请在飞书开放平台为应用申请以下权限：bitable:app:readonly 或 bitable:app 或 base:table:read"
+            ? "Grant the app bitable:app:readonly, bitable:app, or base:table:read in Feishu / Lark developer console."
             : undefined,
         },
         { status: 400 },

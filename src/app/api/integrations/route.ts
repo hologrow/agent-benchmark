@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllIntegrations, upsertIntegrationByType } from '@/lib/db';
 
-// GET /api/integrations - 获取所有集成配置
+// GET /api/integrations - list integrations
 export async function GET() {
   try {
     const integrations = getAllIntegrations();
@@ -15,7 +15,7 @@ export async function GET() {
   }
 }
 
-// POST /api/integrations - 创建或更新集成配置
+// POST /api/integrations - create or update integration
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

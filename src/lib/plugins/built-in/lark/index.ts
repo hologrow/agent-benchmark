@@ -298,7 +298,7 @@ export class LarkPlugin extends BasePlugin {
         if (tableField && fields[tableField] !== undefined) {
           return String(fields[tableField]);
         }
-        // Fallback to common variations
+        // Heuristic: match common EN/CN Bitable column titles
         const fallbacks: Record<string, string[]> = {
           input: ["input", "Input", "问题", "输入", "内容", "Content"],
           expected_output: [

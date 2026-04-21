@@ -62,7 +62,8 @@ const formSchema = z.object({
   description: z.string().optional(),
   script_path: z.string().min(1, "Script path is required"),
   model_id: z.number().optional(),
-  config: z.string().min(1, "Configuration is required"),
+  prompt_template: z.string().min(1, "Prompt template is required"),
+  config: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -133,7 +134,8 @@ export function EvaluatorManagement() {
       description: "",
       script_path: "scripts/run_evaluator.py",
       model_id: undefined,
-      config: JSON.stringify(defaultConfig, null, 2),
+      prompt_template: defaultConfig.evaluation_prompt,
+      config: JSON.stringify({ ...defaultConfig, evaluation_prompt: undefined }, null, 2),
     },
   });
 
@@ -165,17 +167,24 @@ export function EvaluatorManagement() {
 
   const onSubmit = async (values: FormData) => {
     try {
-      // Validate JSON format
-      try {
-        JSON.parse(values.config);
-      } catch {
-        toast.error("Configuration must be valid JSON format");
-        return;
+      // Validate JSON format for config
+      let parsedConfig = {};
+      if (values.config) {
+        try {
+          parsedConfig = JSON.parse(values.config);
+        } catch {
+          toast.error("Configuration must be valid JSON format");
+          return;
+        }
       }
 
       const payload = {
-        ...values,
-        config: JSON.parse(values.config),
+        name: values.name,
+        description: values.description,
+        script_path: values.script_path,
+        model_id: values.model_id!,
+        prompt_template: values.prompt_template,
+        config: parsedConfig,
       };
 
       if (editingEvaluator) {
@@ -198,12 +207,29 @@ export function EvaluatorManagement() {
 
   const handleEdit = (evaluator: LocalEvaluator) => {
     setEditingEvaluator(evaluator);
+
+    // Parse config to extract prompt_template if available
+    let parsedConfig: Record<string, unknown> = {};
+    let promptTemplate = defaultConfig.evaluation_prompt;
+    try {
+      parsedConfig = JSON.parse(evaluator.config || '{}') as Record<string, unknown>;
+      if (parsedConfig.evaluation_prompt && typeof parsedConfig.evaluation_prompt === 'string') {
+        promptTemplate = parsedConfig.evaluation_prompt;
+        // Remove evaluation_prompt from config for the form
+        const { evaluation_prompt: _, ...restConfig } = parsedConfig;
+        parsedConfig = restConfig;
+      }
+    } catch {
+      // Use defaults
+    }
+
     form.reset({
       name: evaluator.name,
       description: evaluator.description,
       script_path: evaluator.script_path,
       model_id: evaluator.model_id ?? undefined,
-      config: evaluator.config,
+      prompt_template: promptTemplate,
+      config: JSON.stringify(parsedConfig, null, 2),
     });
     setDialogOpen(true);
   };
@@ -231,7 +257,8 @@ export function EvaluatorManagement() {
       description: "",
       script_path: "scripts/run_evaluator.py",
       model_id: undefined,
-      config: JSON.stringify(defaultConfig, null, 2),
+      prompt_template: defaultConfig.evaluation_prompt,
+      config: JSON.stringify({ ...defaultConfig, evaluation_prompt: undefined }, null, 2),
     });
     setDialogOpen(true);
   };

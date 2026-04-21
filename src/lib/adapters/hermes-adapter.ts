@@ -1,8 +1,5 @@
 /**
- * Hermes Adapter
- * 执行Hermes类型的Agent
- *
- * 特点: Hermes特定命令行工具，可能有特殊的参数或环境要求
+ * Hermes shell adapter — same pattern as Other with optional env tweaks.
  */
 
 import { exec } from 'child_process';
@@ -12,7 +9,7 @@ import { parseAgentConfig, escapeShellPrompt, replaceCommandVariables } from './
 
 const execAsync = promisify(exec);
 
-// 超时时间: 10分钟
+// 10 minute timeout
 const EXECUTION_TIMEOUT = 10 * 60 * 1000;
 
 export class HermesAdapter implements AgentAdapter {
@@ -20,18 +17,14 @@ export class HermesAdapter implements AgentAdapter {
     const startTime = Date.now();
 
     try {
-      // 解析配置
       const config = parseAgentConfig(options.agent) as CommandAgentConfig;
 
-      // 验证配置
       if (!config.command) {
         throw new Error('Command is required for Hermes agent');
       }
 
-      // 转义prompt
       const escapedPrompt = escapeShellPrompt(options.prompt);
 
-      // 替换变量
       const command = replaceCommandVariables(config.command, {
         prompt: escapedPrompt,
         execution_id: options.executionId,
@@ -40,13 +33,11 @@ export class HermesAdapter implements AgentAdapter {
       console.log(`[HermesAdapter] Executing command:`, command);
       console.log(`[HermesAdapter] Full prompt:`, options.prompt);
 
-      // 执行命令
       const { stdout, stderr } = await execAsync(command, {
         timeout: EXECUTION_TIMEOUT,
         maxBuffer: 50 * 1024 * 1024, // 50MB buffer
         env: {
           ...process.env,
-          // Hermes可能需要特定的环境变量
           FORCE_COLOR: '0',
           NON_INTERACTIVE: '1',
           HERMES_EXECUTION_ID: options.executionId,

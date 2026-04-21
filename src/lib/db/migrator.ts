@@ -9,7 +9,6 @@ interface Migration {
   down?: string;
 }
 
-// 初始化迁移表
 function initMigrationsTable(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS __migrations (
@@ -20,7 +19,6 @@ function initMigrationsTable(db: Database.Database) {
   `);
 }
 
-// 获取已执行的迁移版本
 function getExecutedMigrations(db: Database.Database): number[] {
   const tableExists = db.prepare(`
     SELECT name FROM sqlite_master WHERE type='table' AND name='__migrations'
@@ -32,18 +30,15 @@ function getExecutedMigrations(db: Database.Database): number[] {
   return rows.map(r => r.version);
 }
 
-// 记录迁移已执行
 function recordMigration(db: Database.Database, version: number, name: string) {
   db.prepare('INSERT OR REPLACE INTO __migrations (version, name) VALUES (?, ?)')
     .run(version, name);
 }
 
-// 删除迁移记录
 function removeMigration(db: Database.Database, version: number) {
   db.prepare('DELETE FROM __migrations WHERE version = ?').run(version);
 }
 
-// 从 migrations 目录加载迁移文件
 function loadMigrations(migrationsDir: string): Migration[] {
   const migrations: Migration[] = [];
 
@@ -60,7 +55,6 @@ function loadMigrations(migrationsDir: string): Migration[] {
       const name = match[2].replace(/_/g, ' ');
       const content = readFileSync(join(migrationsDir, file), 'utf-8');
 
-      // 解析 up 和 down 部分
       const upMatch = content.match(/--\s*up\b([\s\S]*?)(?=--\s*down\b|$)/i);
       const downMatch = content.match(/--\s*down\b([\s\S]*?)$/i);
 
@@ -71,14 +65,13 @@ function loadMigrations(migrationsDir: string): Migration[] {
         down: downMatch ? downMatch[2].trim() : undefined,
       });
     }
-  } catch (e) {
-    // migrations 目录可能不存在
+  } catch {
+    // migrations directory may be missing
   }
 
   return migrations.sort((a, b) => a.version - b.version);
 }
 
-// 执行迁移
 export function migrate(
   db: Database.Database,
   migrationsDir: string = join(process.cwd(), 'src', 'lib', 'db', 'migrations')
@@ -91,7 +84,6 @@ export function migrate(
     const executedVersions = getExecutedMigrations(db);
     const migrations = loadMigrations(migrationsDir);
 
-    // 按顺序执行未执行的迁移
     for (const migration of migrations) {
       if (executedVersions.includes(migration.version)) {
         continue;
@@ -99,7 +91,6 @@ export function migrate(
 
       console.log(`[Migration] Running ${migration.version}: ${migration.name}`);
 
-      // 在事务中执行迁移
       db.transaction(() => {
         db.exec(migration.up);
         recordMigration(db, migration.version, migration.name);
@@ -117,7 +108,6 @@ export function migrate(
   }
 }
 
-// 回滚到指定版本
 export function rollback(
   db: Database.Database,
   targetVersion: number,
@@ -129,7 +119,6 @@ export function rollback(
     const executedVersions = getExecutedMigrations(db);
     const migrations = loadMigrations(migrationsDir);
 
-    // 获取需要回滚的版本（按降序）
     const toRollback = migrations
       .filter(m => m.version > targetVersion && executedVersions.includes(m.version))
       .sort((a, b) => b.version - a.version);
@@ -159,7 +148,6 @@ export function rollback(
   }
 }
 
-// 获取迁移状态
 export function getMigrationStatus(
   db: Database.Database,
   migrationsDir: string = join(process.cwd(), 'src', 'lib', 'db', 'migrations')

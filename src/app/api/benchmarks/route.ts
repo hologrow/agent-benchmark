@@ -5,7 +5,7 @@ import {
   getTestSetCaseIds
 } from '@/lib/db';
 
-// GET /api/benchmarks - 获取所有 benchmark 配置
+// GET /api/benchmarks - list benchmarks
 export async function GET() {
   try {
     const benchmarks = getAllBenchmarks();
@@ -19,7 +19,7 @@ export async function GET() {
   }
 }
 
-// POST /api/benchmarks - 创建新 benchmark 配置
+// POST /api/benchmarks - create benchmark
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 如果有 test_set_id，获取其 test_case_ids
+    // Resolve test_case_ids from test_set_id when needed
     let finalTestCaseIds = test_case_ids;
     if (test_set_id && (!test_case_ids || test_case_ids.length === 0)) {
       finalTestCaseIds = getTestSetCaseIds(test_set_id);

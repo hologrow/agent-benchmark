@@ -4,7 +4,7 @@ import {
   createEvaluator
 } from '@/lib/db';
 
-// GET /api/evaluators - 获取所有评估器
+// GET /api/evaluators - list evaluators
 export async function GET() {
   try {
     const evaluators = getAllEvaluators();
@@ -18,7 +18,7 @@ export async function GET() {
   }
 }
 
-// POST /api/evaluators - 创建新评估器
+// POST /api/evaluators - create evaluator
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
