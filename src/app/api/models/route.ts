@@ -4,7 +4,7 @@ import {
   createModel,
 } from '@/lib/db';
 
-// GET /api/models - 获取所有模型
+// GET /api/models - list models
 export async function GET() {
   try {
     const models = getAllModels();
@@ -18,7 +18,7 @@ export async function GET() {
   }
 }
 
-// POST /api/models - 创建新模型
+// POST /api/models - create model
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     if (!name || !model_id) {
       return NextResponse.json(
-        { error: '名称和模型ID不能为空' },
+        { error: 'Name and model_id are required' },
         { status: 400 }
       );
     }

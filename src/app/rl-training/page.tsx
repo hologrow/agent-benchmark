@@ -42,19 +42,12 @@ import {
   Settings,
 } from "lucide-react";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
+import type { Model, Agent as ApiAgent } from "@/types/api";
 
-interface Model {
-  id: number;
-  name: string;
-  model_id: string;
-  provider: string;
-}
-
-interface Agent {
-  id: number;
-  name: string;
-  description: string;
-  command: string;
+// Extended agent type with UI-specific fields
+interface Agent extends ApiAgent {
+  command?: string;
 }
 
 interface Message {
@@ -82,27 +75,27 @@ interface TrainingSession {
   systemPrompt?: string;
 }
 
-const defaultSystemPrompt = `你是 Teacher（教师模型），负责训练 Student Agent（学生代理）。
+const defaultSystemPrompt = `You are the Teacher model responsible for training the Student Agent.
 
-## 训练流程
-1. 你向 Agent 发出明确的任务指令
-2. Agent 执行命令并返回结果
-3. 你评估结果并给出改进建议或新任务
-4. 循环往复，直到 Agent 掌握技能
+## Training Process
+1. You give clear task instructions to the Agent
+2. The Agent executes commands and returns results
+3. You evaluate the results and provide improvement suggestions or new tasks
+4. Loop until the Agent masters the skill
 
-## 指令格式
-直接向 Agent 发出清晰的指令，例如：
-- "请分析 src/app/page.tsx 文件的主要功能"
-- "帮我优化这段代码的性能"
-- "修复 tests/login.spec.ts 中的测试错误"
+## Instruction Format
+Give clear instructions to the Agent, for example:
+- "Please analyze the main functionality of src/app/page.tsx"
+- "Help me optimize the performance of this code"
+- "Fix the test errors in tests/login.spec.ts"
 
-## 评估要点
-- 准确性：Agent 是否完成了任务
-- 效率：执行方式是否最优
-- 完整性：输出是否全面
+## Evaluation Criteria
+- Accuracy: Whether the Agent completed the task
+- Efficiency: Whether the execution method is optimal
+- Completeness: Whether the output is comprehensive
 
-## 结束条件
-当 Agent 连续 3 轮表现优秀，或已达到训练目标时，回复 "训练完成" 结束训练。`;
+## End Condition
+When the Agent performs excellently for 3 consecutive rounds, or the training goal is reached, reply "training complete" to end the training.`;
 
 export default function RLTrainingPage() {
   const [models, setModels] = useState<Model[]>([]);
@@ -152,19 +145,16 @@ export default function RLTrainingPage() {
 
   const fetchData = async () => {
     try {
-      const [modelsRes, agentsRes] = await Promise.all([
-        fetch("/api/models"),
-        fetch("/api/agents"),
+      const [modelsData, agentsData] = await Promise.all([
+        api.models.list(),
+        api.agents.list(),
       ]);
-
-      const modelsData = await modelsRes.json();
-      const agentsData = await agentsRes.json();
 
       setModels(modelsData.models || []);
       setAgents(agentsData.agents || []);
     } catch (error) {
       console.error("Error fetching data:", error);
-      toast.error("获取数据失败");
+      toast.error("Failed to fetch data");
     } finally {
       setLoading(false);
     }
@@ -191,11 +181,11 @@ export default function RLTrainingPage() {
 
   const createNewSession = () => {
     if (!newSessionForm.task.trim()) {
-      toast.error("请输入训练任务");
+      toast.error("Please enter training task");
       return;
     }
     if (!newSessionForm.teacherModelId || !newSessionForm.studentAgentId) {
-      toast.error("请选择 Teacher 模型和 Student Agent");
+      toast.error("Please select Teacher model and Student Agent");
       return;
     }
 
@@ -224,7 +214,7 @@ export default function RLTrainingPage() {
     setActiveSession(newSession);
     setShowNewSessionDialog(false);
     resetNewForm();
-    toast.success("训练会话已创建");
+    toast.success("Training session created");
   };
 
   const resetNewForm = () => {
@@ -254,11 +244,11 @@ export default function RLTrainingPage() {
     if (!editingSession) return;
 
     if (!editForm.task.trim()) {
-      toast.error("请输入训练任务");
+      toast.error("Please enter training task");
       return;
     }
     if (!editForm.teacherModelId || !editForm.studentAgentId) {
-      toast.error("请选择 Teacher 模型和 Student Agent");
+      toast.error("Please select Teacher model and Student Agent");
       return;
     }
 
@@ -287,7 +277,7 @@ export default function RLTrainingPage() {
 
     setShowEditDialog(false);
     setEditingSession(null);
-    toast.success("训练会话配置已更新");
+    toast.success("Training session configuration updated");
   };
 
   const startTraining = async () => {
@@ -301,7 +291,7 @@ export default function RLTrainingPage() {
       await runTrainingRound(updatedSession);
     } catch (error) {
       console.error("Training error:", error);
-      toast.error("训练过程出错");
+      toast.error("Training process error");
       setIsTraining(false);
     }
   };
@@ -311,11 +301,11 @@ export default function RLTrainingPage() {
     const studentAgent = agents.find((a) => a.id === session.studentAgentId);
 
     if (!teacherModel) {
-      toast.error("Teacher 模型配置错误");
+      toast.error("Teacher model configuration error");
       return;
     }
     if (!studentAgent) {
-      toast.error("Student Agent 配置错误");
+      toast.error("Student Agent configuration error");
       return;
     }
 
@@ -324,7 +314,7 @@ export default function RLTrainingPage() {
       const completedSession = { ...session, status: "completed" as const };
       updateSession(completedSession);
       setIsTraining(false);
-      toast.success("训练完成 - 达到最大轮数");
+      toast.success("Training complete - Max rounds reached");
       return;
     }
 
@@ -347,15 +337,12 @@ export default function RLTrainingPage() {
     );
 
     // Step 1: Teacher generates instruction
-    const teacherResponse = await fetch("/api/rl-training", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        modelId: teacherModel.id,
-        messages: [
-          {
-            role: "system",
-            content: `You are the Teacher model training an Agent. You communicate directly with the Agent.
+    const teacherData = await api.rlTraining.generate({
+      modelId: teacherModel.id,
+      messages: [
+        {
+          role: "system",
+          content: `You are the Teacher model training an Agent. You communicate directly with the Agent.
 
 Round: ${currentRound}/${session.maxRounds}
 Training Goal: ${session.task}
@@ -366,23 +353,15 @@ Guidelines:
 3. Review the Agent's output and provide feedback
 4. Give improvement suggestions or next tasks
 
-Say "训练完成" or "training complete" when the Agent has mastered the task.`,
-          },
-          ...conversationHistory,
-        ],
-        round: currentRound,
-      }),
+Say "training complete" when the Agent has mastered the task.`,
+        },
+        ...conversationHistory,
+      ],
+      round: currentRound,
     });
-
-    if (!teacherResponse.ok) {
-      throw new Error("Teacher model request failed");
-    }
-
-    const teacherData = await teacherResponse.json();
 
     // Check if training should end
     if (
-      teacherData.content.toLowerCase().includes("训练完成") ||
       teacherData.content.toLowerCase().includes("training complete")
     ) {
       const teacherMessage: Message = {
@@ -399,7 +378,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
       };
       updateSession(completedSession);
       setIsTraining(false);
-      toast.success("训练完成 - Teacher 认为 Agent 已掌握任务");
+      toast.success("Training complete - Teacher believes Agent has mastered the task");
       return;
     }
 
@@ -427,20 +406,11 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
 
     // Step 2: Agent executes the instruction
     const startTime = Date.now();
-    const agentResponse = await fetch("/api/rl-training/agent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agentId: studentAgent.id,
-        prompt: teacherData.content,
-        round: currentRound,
-      }),
+    const agentData = await api.rlTraining.executeAgent({
+      agentId: studentAgent.id,
+      prompt: teacherData.content,
+      round: currentRound,
     });
-
-    console.log(
-      `[RL Training] Round ${currentRound} - Agent response status:`,
-      agentResponse.status,
-    );
 
     const executionTime = Date.now() - startTime;
     let agentContent: string;
@@ -450,13 +420,11 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
       executionTime,
     };
 
-    if (!agentResponse.ok) {
-      const errorData = await agentResponse.json();
-      agentContent = `执行错误: ${errorData.error || "Unknown error"}`;
+    if (agentData.error) {
+      agentContent = `Execution error: ${agentData.error}`;
       isError = true;
     } else {
-      const agentData = await agentResponse.json();
-      agentContent = agentData.output || "Agent 没有输出";
+      agentContent = agentData.output || "Agent has no output";
       metadata.executionTime = agentData.executionTime;
     }
 
@@ -487,7 +455,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
       const pausedSession = { ...activeSession, status: "paused" as const };
       updateSession(pausedSession);
       setIsTraining(false);
-      toast.info("训练已暂停");
+      toast.info("Training paused");
     }
   };
 
@@ -511,7 +479,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
   const resetSession = () => {
     if (
       activeSession &&
-      confirm("确定要重置这个训练会话吗？所有进度将丢失。")
+      confirm("Are you sure you want to reset this training session? All progress will be lost.")
     ) {
       const resetSession: TrainingSession = {
         ...activeSession,
@@ -521,24 +489,24 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
       };
       updateSession(resetSession);
       setIsTraining(false);
-      toast.success("训练会话已重置");
+      toast.success("Training session reset");
     }
   };
 
   const deleteSession = (sessionId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (confirm("确定要删除这个训练会话吗？")) {
+    if (confirm("Are you sure you want to delete this training session?")) {
       const updatedSessions = sessions.filter((s) => s.id !== sessionId);
       saveSessions(updatedSessions);
       if (activeSession?.id === sessionId) {
         setActiveSession(null);
       }
-      toast.success("训练会话已删除");
+      toast.success("Training session deleted");
     }
   };
 
   const getModelName = (modelId: number) => {
-    return models.find((m) => m.id === modelId)?.name || `模型 #${modelId}`;
+    return models.find((m) => m.id === modelId)?.name || `Model #${modelId}`;
   };
 
   const getAgentName = (agentId: number) => {
@@ -547,10 +515,10 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
 
   const getStatusBadge = (status: TrainingSession["status"]) => {
     const config = {
-      idle: { label: "待开始", className: "bg-gray-500" },
-      running: { label: "训练中", className: "bg-blue-500 animate-pulse" },
-      paused: { label: "已暂停", className: "bg-yellow-500" },
-      completed: { label: "已完成", className: "bg-green-500" },
+      idle: { label: "Not Started", className: "bg-gray-500" },
+      running: { label: "Training", className: "bg-blue-500 animate-pulse" },
+      paused: { label: "Paused", className: "bg-yellow-500" },
+      completed: { label: "Completed", className: "bg-green-500" },
     };
     const { label, className } = config[status];
     return <Badge className={className}>{label}</Badge>;
@@ -560,9 +528,9 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">强化训练</h1>
+          <h1 className="text-3xl font-bold">RL Training</h1>
           <p className="text-muted-foreground mt-2">
-            监督进化，通过指令-执行-反馈循环提升 Agent 能力
+            Supervised evolution to improve Agent capabilities through instruction-execution-feedback loops
           </p>
         </div>
         <Button
@@ -570,7 +538,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
           disabled={loading}
         >
           <GraduationCap className="h-4 w-4 mr-2" />
-          新建训练会话
+          New Training Session
         </Button>
       </div>
 
@@ -578,8 +546,8 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
         {/* Session List */}
         <Card className="lg:col-span-1">
           <CardHeader>
-            <CardTitle>训练会话</CardTitle>
-            <CardDescription>共 {sessions.length} 个会话</CardDescription>
+            <CardTitle>Training Sessions</CardTitle>
+            <CardDescription>{sessions.length} sessions total</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -589,13 +557,13 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
             ) : sessions.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>暂无训练会话</p>
+                <p>No training sessions</p>
                 <Button
                   variant="outline"
                   className="mt-4"
                   onClick={() => setShowNewSessionDialog(true)}
                 >
-                  创建第一个会话
+                  Create first session
                 </Button>
               </div>
             ) : (
@@ -620,7 +588,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                         <div className="flex items-center gap-2 mt-2">
                           {getStatusBadge(session.status)}
                           <span className="text-xs text-muted-foreground">
-                            轮次 {session.currentRound}/{session.maxRounds}
+                            Round {session.currentRound}/{session.maxRounds}
                           </span>
                         </div>
                       </div>
@@ -630,7 +598,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                           size="icon"
                           className="h-8 w-8"
                           onClick={(e) => openEditDialog(session, e)}
-                          title="编辑配置"
+                          title="Edit Configuration"
                         >
                           <Settings className="h-4 w-4" />
                         </Button>
@@ -639,7 +607,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                           size="icon"
                           className="h-8 w-8 text-destructive"
                           onClick={(e) => deleteSession(session.id, e)}
-                          title="删除会话"
+                          title="Delete Session"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -658,7 +626,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>
-                  {activeSession ? "训练对话" : "选择或创建会话"}
+                  {activeSession ? "Training Dialogue" : "Select or Create Session"}
                 </CardTitle>
                 {activeSession && (
                   <CardDescription>
@@ -672,22 +640,22 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                   {activeSession.status === "running" ? (
                     <Button variant="outline" onClick={pauseTraining}>
                       <Pause className="h-4 w-4 mr-2" />
-                      暂停
+                      Pause
                     </Button>
                   ) : activeSession.status === "paused" ? (
                     <Button onClick={continueTraining}>
                       <Play className="h-4 w-4 mr-2" />
-                      继续
+                      Resume
                     </Button>
                   ) : activeSession.status === "idle" ? (
                     <Button onClick={startTraining}>
                       <Play className="h-4 w-4 mr-2" />
-                      开始训练
+                      Start Training
                     </Button>
                   ) : null}
                   <Button variant="outline" onClick={resetSession}>
                     <RotateCcw className="h-4 w-4 mr-2" />
-                    重置
+                    Reset
                   </Button>
                 </div>
               )}
@@ -697,9 +665,9 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
             {!activeSession ? (
               <div className="text-center py-16 text-muted-foreground">
                 <MessageSquare className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                <p>请从左侧选择一个训练会话</p>
+                <p>Please select a training session from the left</p>
                 <p className="text-sm mt-2">
-                  或点击&quot;新建训练会话&quot;开始
+                  Or click &quot;New Training Session&quot; to start
                 </p>
               </div>
             ) : (
@@ -708,10 +676,10 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                 <div className="flex items-center gap-4 text-sm">
                   <div className="flex-1">
                     <div className="flex justify-between mb-1">
-                      <span>训练进度</span>
+                      <span>Training Progress</span>
                       <span>
                         {activeSession.currentRound}/{activeSession.maxRounds}{" "}
-                        轮
+                        Rounds
                       </span>
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -760,11 +728,11 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                           <div className="flex items-center gap-2 mb-1">
                             <span className="text-xs font-medium">
                               {message.role === "teacher"
-                                ? "Teacher (指令)"
-                                : "Agent (执行)"}
+                                ? "Teacher (Instruction)"
+                                : "Agent (Execution)"}
                             </span>
                             <span className="text-xs opacity-70">
-                              第{message.round}轮
+                              Round {message.round}
                             </span>
                             {message.metadata?.executionTime && (
                               <span className="text-xs opacity-70">
@@ -783,7 +751,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                             <div className="mt-2 pt-2 border-t border-border/50">
                               <div className="flex items-center gap-1 text-xs opacity-70">
                                 <Terminal className="h-3 w-3" />
-                                <span>执行命令</span>
+                                <span>Execution Command</span>
                               </div>
                               <code className="text-xs block mt-1 opacity-90 font-mono">
                                 {message.metadata.command}
@@ -796,7 +764,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                   {isTraining && (
                     <div className="flex items-center gap-2 text-muted-foreground py-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm">训练中...</span>
+                      <span className="text-sm">Training...</span>
                     </div>
                   )}
                   <div ref={messagesEndRef} />
@@ -804,7 +772,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
 
                 {/* Task Info */}
                 <div className="bg-muted p-3 rounded-lg">
-                  <p className="text-sm font-medium">训练目标</p>
+                  <p className="text-sm font-medium">Training Goal</p>
                   <p className="text-sm text-muted-foreground mt-1">
                     {activeSession.task}
                   </p>
@@ -822,17 +790,17 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
       >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>新建训练会话</DialogTitle>
+            <DialogTitle>New Training Session</DialogTitle>
             <DialogDescription>
-              配置 Teacher 模型和 Student Agent，开始强化学习训练
+              Configure Teacher model and Student Agent, start reinforcement learning training
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">训练目标 *</label>
+              <label className="text-sm font-medium">Training Goal *</label>
               <Textarea
-                placeholder="描述你希望 Agent 学会的技能，例如：学会使用 acpx 工具分析和优化代码"
+                placeholder="Describe the skill you want the Agent to learn, e.g.: learn to use acpx tool to analyze and optimize code"
                 value={newSessionForm.task}
                 onChange={(e) =>
                   setNewSessionForm({ ...newSessionForm, task: e.target.value })
@@ -844,7 +812,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
               <div className="space-y-2">
                 <label className="text-sm font-medium flex items-center gap-2">
                   <Brain className="h-4 w-4" />
-                  Teacher 模型 *
+                  Teacher Model *
                 </label>
                 <Select
                   value={newSessionForm.teacherModelId}
@@ -856,18 +824,18 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="选择 Teacher 模型" />
+                    <SelectValue placeholder="Select Teacher model" />
                   </SelectTrigger>
                   <SelectContent>
                     {models.map((model) => (
                       <SelectItem key={model.id} value={String(model.id)}>
-                        {model.name || `模型 #${model.id}`}
+                        {model.name || `Model #${model.id}`}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  负责发出指令和评估反馈的大语言模型
+                  Large language model responsible for issuing instructions and evaluation feedback
                 </p>
               </div>
 
@@ -886,7 +854,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="选择 Student Agent" />
+                    <SelectValue placeholder="Select Student Agent" />
                   </SelectTrigger>
                   <SelectContent>
                     {agents.map((agent) => (
@@ -897,13 +865,13 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  通过 acpx 命令执行的 Agent 程序
+                  Agent program executed via acpx command
                 </p>
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">最大训练轮数</label>
+              <label className="text-sm font-medium">Max Training Rounds</label>
               <Input
                 type="number"
                 min={1}
@@ -917,13 +885,13 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                 }
               />
               <p className="text-xs text-muted-foreground">
-                Teacher 发出指令 → Agent 执行的循环次数上限
+                Maximum loop count: Teacher issues instruction → Agent executes
               </p>
             </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                Teacher 系统提示词（可选）
+                Teacher System Prompt (Optional)
               </label>
               <Textarea
                 className="min-h-[150px] font-mono text-sm"
@@ -943,9 +911,9 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
               variant="outline"
               onClick={() => setShowNewSessionDialog(false)}
             >
-              取消
+              Cancel
             </Button>
-            <Button onClick={createNewSession}>创建会话</Button>
+            <Button onClick={createNewSession}>Create Session</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -954,17 +922,17 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>编辑训练会话配置</DialogTitle>
+            <DialogTitle>Edit Training Session Configuration</DialogTitle>
             <DialogDescription>
-              修改训练任务、模型配置和训练参数
+              Modify training task, model configuration and training parameters
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">训练目标 *</label>
+              <label className="text-sm font-medium">Training Goal *</label>
               <Textarea
-                placeholder="描述你希望 Agent 学会的技能"
+                placeholder="Describe the skill you want the Agent to learn"
                 value={editForm.task}
                 onChange={(e) =>
                   setEditForm({ ...editForm, task: e.target.value })
@@ -976,7 +944,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
               <div className="space-y-2">
                 <label className="text-sm font-medium flex items-center gap-2">
                   <Brain className="h-4 w-4" />
-                  Teacher 模型 *
+                  Teacher Model *
                 </label>
                 <Select
                   value={editForm.teacherModelId}
@@ -985,18 +953,18 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="选择 Teacher 模型" />
+                    <SelectValue placeholder="Select Teacher model" />
                   </SelectTrigger>
                   <SelectContent>
                     {models.map((model) => (
                       <SelectItem key={model.id} value={String(model.id)}>
-                        {model.name || `模型 #${model.id}`}
+                        {model.name || `Model #${model.id}`}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  负责发出指令和评估反馈的大语言模型
+                  Large language model responsible for issuing instructions and evaluation feedback
                 </p>
               </div>
 
@@ -1012,7 +980,7 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="选择 Student Agent" />
+                    <SelectValue placeholder="Select Student Agent" />
                   </SelectTrigger>
                   <SelectContent>
                     {agents.map((agent) => (
@@ -1023,13 +991,13 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  通过 acpx 命令执行的 Agent 程序
+                  Agent program executed via acpx command
                 </p>
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">最大训练轮数</label>
+              <label className="text-sm font-medium">Max Training Rounds</label>
               <Input
                 type="number"
                 min={1}
@@ -1040,12 +1008,12 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                 }
               />
               <p className="text-xs text-muted-foreground">
-                可修改范围，已执行的轮次不会受到影响
+                Modifiable range, executed rounds will not be affected
               </p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Teacher 系统提示词</label>
+              <label className="text-sm font-medium">Teacher System Prompt</label>
               <Textarea
                 className="min-h-[150px] font-mono text-sm"
                 value={editForm.systemPrompt}
@@ -1054,18 +1022,18 @@ Say "训练完成" or "training complete" when the Agent has mastered the task.`
                 }
               />
               <p className="text-xs text-muted-foreground">
-                修改后将应用于后续的训练轮次
+                Changes will apply to subsequent training rounds
               </p>
             </div>
           </div>
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setShowEditDialog(false)}>
-              取消
+              Cancel
             </Button>
             <Button onClick={saveEditSession}>
               <Pencil className="h-4 w-4 mr-2" />
-              保存修改
+              Save Changes
             </Button>
           </div>
         </DialogContent>

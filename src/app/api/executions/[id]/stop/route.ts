@@ -11,7 +11,7 @@ import {
 
 const execAsync = promisify(exec);
 
-// POST /api/executions/:id/stop - 强制停止执行
+// POST /api/executions/:id/stop - force-stop running execution
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -28,7 +28,7 @@ export async function POST(
       );
     }
 
-    // 只有运行中的执行才能停止
+    // Only a running execution can be stopped
     if (execution.status !== 'running') {
       return NextResponse.json(
         { error: 'Execution is not running', currentStatus: execution.status },
@@ -36,7 +36,7 @@ export async function POST(
       );
     }
 
-    // 获取进程 ID
+    // Read OS process id
     const pid = execution.pid;
     if (!pid) {
       return NextResponse.json(
@@ -45,34 +45,33 @@ export async function POST(
       );
     }
 
-    // 尝试 kill 进程
+    // Terminate child process
     let killed = false;
     try {
-      // 先尝试优雅地终止 (SIGTERM)
+      // Graceful stop (SIGTERM)
       process.kill(pid, 'SIGTERM');
       killed = true;
 
-      // 等待 2 秒后检查进程是否还在
+      // Wait then re-check
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // 检查进程是否还在运行
       try {
-        process.kill(pid, 0); // 信号 0 用于检查进程是否存在
-        // 进程还在，强制 kill (SIGKILL)
+        process.kill(pid, 0); // signal 0: probe if process exists
+        // Still running — SIGKILL
         process.kill(pid, 'SIGKILL');
         console.log(`[StopExecution] PID ${pid} force killed`);
-      } catch (e) {
-        // 进程已经终止
+      } catch {
+        // Already gone
         console.log(`[StopExecution] PID ${pid} terminated gracefully`);
       }
     } catch (error) {
-      // 如果进程已经不存在，也算成功
+      // ESRCH: already dead — treat as success
       if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
         console.log(`[StopExecution] PID ${pid} already terminated`);
         killed = true;
       } else {
         console.error(`[StopExecution] Failed to kill PID ${pid}:`, error);
-        // 尝试使用 shell 命令 kill
+        // Fallback: shell kill
         try {
           await execAsync(`kill -9 ${pid}`);
           killed = true;
@@ -83,13 +82,13 @@ export async function POST(
       }
     }
 
-    // 更新执行状态为 cancelled
+    // Mark execution cancelled
     updateExecution(executionId, {
       status: 'cancelled',
       completed_at: new Date().toISOString()
     });
 
-    // 更新所有 running 状态的结果为 cancelled
+    // Cancel any result rows still marked running
     const details = getExecutionDetails(executionId);
     let cancelledResultsCount = 0;
     if (details && details.results) {

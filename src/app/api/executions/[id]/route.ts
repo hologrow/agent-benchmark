@@ -6,7 +6,7 @@ import {
   getExecutionDetails
 } from '@/lib/db';
 
-// GET /api/executions/:id - 获取执行记录详情
+// GET /api/executions/:id - execution detail
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,7 +32,7 @@ export async function GET(
   }
 }
 
-// PUT /api/executions/:id - 更新执行记录
+// PUT /api/executions/:id - update execution
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -66,7 +66,7 @@ export async function PUT(
   }
 }
 
-// DELETE /api/executions/:id - 删除执行记录
+// DELETE /api/executions/:id - delete execution
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

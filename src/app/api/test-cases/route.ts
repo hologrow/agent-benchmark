@@ -4,7 +4,7 @@ import {
   createTestCase
 } from '@/lib/db';
 
-// GET /api/test-cases - 获取所有测试用例
+// GET /api/test-cases - list test cases
 export async function GET() {
   try {
     const testCases = getAllTestCases();
@@ -18,7 +18,7 @@ export async function GET() {
   }
 }
 
-// POST /api/test-cases - 创建新测试用例
+// POST /api/test-cases - create test case
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -41,12 +41,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 自动生成 test_id（如果未提供）
     const allTestCases = getAllTestCases();
+    // Defaults when test_id / name / description are omitted
     const generatedTestId = test_id || `TC_${String(allTestCases.length + 1).padStart(3, '0')}`;
-    // 自动生成 name（如果未提供）
     const generatedName = name || input.slice(0, 50);
-    // 自动生成 description（如果未提供）
     const generatedDescription = description || input.slice(0, 200);
 
     const testCase = createTestCase({

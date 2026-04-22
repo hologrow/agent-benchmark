@@ -1,8 +1,5 @@
 /**
- * OpenClaw Adapter
- * 执行OpenClaw类型的Agent
- *
- * 命令格式: openclaw --url <url> --token <token> --prompt "<prompt>"
+ * OpenClaw CLI adapter — `openclaw --url … --token … --prompt "…"`.
  */
 
 import { exec } from 'child_process';
@@ -12,7 +9,7 @@ import { parseAgentConfig, escapeShellPrompt } from './types';
 
 const execAsync = promisify(exec);
 
-// 超时时间: 10分钟
+// 10 minute timeout
 const EXECUTION_TIMEOUT = 10 * 60 * 1000;
 
 export class OpenClawAdapter implements AgentAdapter {
@@ -20,10 +17,8 @@ export class OpenClawAdapter implements AgentAdapter {
     const startTime = Date.now();
 
     try {
-      // 解析配置
       const config = parseAgentConfig(options.agent) as OpenClawConfig;
 
-      // 验证配置
       if (!config.url) {
         throw new Error('OpenClaw URL is required');
       }
@@ -31,15 +26,12 @@ export class OpenClawAdapter implements AgentAdapter {
         throw new Error('OpenClaw token is required');
       }
 
-      // 转义prompt
       const escapedPrompt = escapeShellPrompt(options.prompt);
 
-      // 构建openclaw命令
       const command = `openclaw --url ${config.url} --token ${config.token} --prompt "${escapedPrompt}"`;
 
       console.log(`[OpenClawAdapter] Executing command:`, command.replace(config.token, '***'));
 
-      // 执行命令
       const { stdout, stderr } = await execAsync(command, {
         timeout: EXECUTION_TIMEOUT,
         maxBuffer: 50 * 1024 * 1024, // 50MB buffer

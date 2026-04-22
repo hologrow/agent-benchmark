@@ -13,10 +13,10 @@ const TAB_PARAM = 'tab';
 const DEFAULT_TAB = 'agents';
 
 const tabs = [
-  { value: 'agents', label: 'Agent 管理', icon: Users },
-  { value: 'models', label: '模型管理', icon: Brain },
-  { value: 'evaluators', label: '评估器管理', icon: Settings2 },
-  { value: 'integrations', label: '集成', icon: Puzzle },
+  { value: 'agents', label: 'Agents', icon: Users },
+  { value: 'models', label: 'Models', icon: Brain },
+  { value: 'evaluators', label: 'Evaluators', icon: Settings2 },
+  { value: 'integrations', label: 'Integrations', icon: Puzzle },
 ];
 
 export default function SettingsPage() {
@@ -24,7 +24,7 @@ export default function SettingsPage() {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState(DEFAULT_TAB);
 
-  // 从 URL 读取 tab 参数
+  // Read tab parameter from URL
   useEffect(() => {
     const tabFromUrl = searchParams.get(TAB_PARAM);
     if (tabFromUrl && tabs.some((t) => t.value === tabFromUrl)) {
@@ -32,7 +32,7 @@ export default function SettingsPage() {
     }
   }, [searchParams]);
 
-  // 切换标签时更新 URL
+  // Update URL when switching tabs
   const handleTabChange = (value: string) => {
     setActiveTab(value);
     const params = new URLSearchParams(searchParams);
@@ -43,9 +43,9 @@ export default function SettingsPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold">设置</h1>
+        <h1 className="text-3xl font-bold">Settings</h1>
         <p className="text-muted-foreground mt-2">
-          管理 Agents、模型、评估器和外部工具集成
+          Manage Agents, Models, Evaluators and external tool integrations
         </p>
       </div>
 

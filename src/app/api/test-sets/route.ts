@@ -7,14 +7,14 @@ import {
   deleteTestSet
 } from '@/lib/db';
 
-// GET /api/test-sets - 获取所有测试集
+// GET /api/test-sets - list test sets (or one by ?id=)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
     if (id) {
-      // 获取单个测试集详情
+      // Single test set
       const testSet = getTestSetById(parseInt(id));
       if (!testSet) {
         return NextResponse.json(
@@ -25,7 +25,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ testSet });
     }
 
-    // 获取所有测试集
     const testSets = getAllTestSets();
     return NextResponse.json({ testSets });
   } catch (error) {
@@ -37,7 +36,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/test-sets - 创建新测试集
+// POST /api/test-sets - create test set
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -83,7 +82,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT /api/test-sets - 更新测试集
+// PUT /api/test-sets - update test set
 export async function PUT(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -126,7 +125,7 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// DELETE /api/test-sets - 删除测试集
+// DELETE /api/test-sets - delete test set
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

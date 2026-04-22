@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       command: agent.command,
     });
 
-    // 使用适配器工厂执行Agent
+    // Run via typed adapter
     const adapter = AgentAdapterFactory.getAdapter(agent.agent_type);
     const execId = executionId || `#${round}`;
 
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     if (result.error) {
       console.error(`[RL Training] Agent execution failed:`, result.error);
 
-      // 根据错误类型返回不同状态码
+      // Map timeout → 504
       if (result.error.includes('timeout')) {
         return NextResponse.json(
           {

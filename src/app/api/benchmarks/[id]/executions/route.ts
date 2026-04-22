@@ -6,7 +6,7 @@ import {
   getExecutionDetails
 } from '@/lib/db';
 
-// GET /api/benchmarks/:id/executions - 获取 benchmark 的所有执行记录
+// GET /api/benchmarks/:id/executions - list executions for a benchmark
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -25,7 +25,7 @@ export async function GET(
 
     const executions = getExecutionsByBenchmarkId(benchmarkId);
 
-    // 获取每个 execution 的平均分
+    // Average score per execution
     const executionsWithScore = executions.map(exec => {
       const details = getExecutionDetails(exec.id);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,7 +56,7 @@ export async function GET(
   }
 }
 
-// POST /api/benchmarks/:id/executions - 创建新的执行记录
+// POST /api/benchmarks/:id/executions - create an execution record
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

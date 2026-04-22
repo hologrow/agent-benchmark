@@ -18,7 +18,7 @@ export function getDatabase(): Database.Database {
 function initializeDatabase() {
   if (!db) return;
 
-  // 运行迁移（使用新的迁移系统）
+  // Run migrations (using the new migration system)
   const migrationsDir = join(process.cwd(), 'src', 'lib', 'db', 'migrations');
   const result = migrate(db, migrationsDir);
 
@@ -32,14 +32,14 @@ function initializeDatabase() {
 // Agent Types
 export type AgentType = 'openclaw' | 'hermes' | 'other';
 
-// Agent 相关操作
+// Agent related operations
 export interface Agent {
   id: number;
   name: string;
   description: string;
-  command: string; // 保留向后兼容，新代码使用config_json
+  command: string; // Keep for backward compatibility, new code uses config_json
   agent_type: AgentType;
-  config_json: string; // JSON格式，存储类型特定配置
+  config_json: string; // JSON format, stores type-specific configuration
   created_at: string;
   updated_at: string;
 }
@@ -57,7 +57,7 @@ export function getAgentById(id: number): Agent | undefined {
 export function createAgent(agent: Omit<Agent, 'id' | 'created_at' | 'updated_at'>): Agent {
   const db = getDatabase();
 
-  // 设置默认值
+  // Set default values
   const agentType = agent.agent_type || 'other';
   const configJson = agent.config_json || '{}';
   const command = agent.command || '';
@@ -91,7 +91,7 @@ export function deleteAgent(id: number): void {
   db.prepare('DELETE FROM agents WHERE id = ?').run(id);
 }
 
-// Test Case 相关操作
+// Test Case related operations
 export interface TestCase {
   id: number;
   test_id: string;
@@ -162,7 +162,7 @@ export function deleteTestCase(id: number): void {
   db.prepare('DELETE FROM test_cases WHERE id = ?').run(id);
 }
 
-// Evaluator 相关操作
+// Evaluator related operations
 export interface Evaluator {
   id: number;
   name: string;
@@ -174,7 +174,7 @@ export interface Evaluator {
   updated_at: string;
 }
 
-// TestSet 相关操作
+// TestSet related operations
 export interface TestSet {
   id: number;
   name: string;
@@ -234,7 +234,7 @@ export function deleteEvaluator(id: number): void {
   db.prepare('DELETE FROM evaluators WHERE id = ?').run(id);
 }
 
-// Benchmark Run 相关操作
+// Benchmark Run related operations
 export interface Benchmark {
   id: number;
   name: string;
@@ -294,7 +294,7 @@ export function deleteBenchmark(id: number): void {
   db.prepare('DELETE FROM benchmarks WHERE id = ?').run(id);
 }
 
-// Benchmark Result 相关操作（已弃用，保留别名以兼容旧代码）
+// Benchmark Result related operations (deprecated, keeping aliases for backward compatibility)
 export interface BenchmarkResult {
   id: number;
   execution_id: number;
@@ -364,7 +364,7 @@ export function updateBenchmarkResult(id: number, result: Partial<Omit<Benchmark
   return getBenchmarkResultById(id)!;
 }
 
-// Evaluation 相关操作
+// Evaluation related operations
 export interface Evaluation {
   id: number;
   execution_id: number;
@@ -402,7 +402,7 @@ export function createEvaluation(evaluation: Omit<Evaluation, 'id' | 'evaluated_
   return db.prepare('SELECT * FROM evaluations WHERE id = ?').get(result.lastInsertRowid) as Evaluation;
 }
 
-// Execution 相关操作（对应 benchmark_executions 表）
+// Execution related operations (corresponds to benchmark_executions table)
 export interface Execution {
   id: number;
   benchmark_id: number;
@@ -497,7 +497,7 @@ export function deleteExecution(id: number): void {
   db.prepare('DELETE FROM benchmark_executions WHERE id = ?').run(id);
 }
 
-// Result 相关操作（对应 benchmark_results 表）
+// Result related operations (corresponds to benchmark_results table)
 export interface Result {
   id: number;
   execution_id: number;
@@ -593,7 +593,7 @@ export function getExecutionDetails(executionId: number) {
   };
 }
 
-// 获取完整的 Benchmark 详情（包含 executions）
+// Get complete Benchmark details (including executions)
 export function getBenchmarkDetails(benchmarkId: number) {
   const db = getDatabase();
   const benchmark = getBenchmarkById(benchmarkId);
@@ -701,12 +701,12 @@ export function deleteModel(id: number): void {
   db.prepare('DELETE FROM models WHERE id = ?').run(id);
 }
 
-// ==================== TestSet 相关操作 ====================
+// ==================== TestSet related operations ====================
 export * from './testset';
 
-// ==================== Benchmark V2 接口 ====================
+// ==================== Benchmark V2 Interfaces ====================
 
-// 新的 Benchmark 接口（向后兼容）
+// New Benchmark interface (backward compatible)
 export interface BenchmarkV2 {
   id: number;
   name: string;
@@ -717,12 +717,12 @@ export interface BenchmarkV2 {
   run_config: string;
   created_at: string;
   updated_at: string;
-  // 扩展字段
+  // Extended fields
   test_cases?: TestCase[];
   test_set?: TestSet;
 }
 
-// 获取 Benchmark 详情（包含测试集信息）
+// Get Benchmark details (including test set information)
 export function getBenchmarkWithTestSet(id: number): BenchmarkV2 | undefined {
   const db = getDatabase();
   const benchmark = db.prepare('SELECT * FROM benchmarks WHERE id = ?').get(id) as Benchmark | undefined;
@@ -741,7 +741,7 @@ export function getBenchmarkWithTestSet(id: number): BenchmarkV2 | undefined {
       ORDER BY tsi.order_index ASC
     `).all(benchmark.test_set_id) as TestCase[];
   } else if (benchmark.test_case_ids) {
-    // 向后兼容：从 test_case_ids 获取
+    // Backward compatible: get from test_case_ids
     try {
       const ids = JSON.parse(benchmark.test_case_ids) as number[];
       if (ids.length > 0) {
@@ -749,7 +749,7 @@ export function getBenchmarkWithTestSet(id: number): BenchmarkV2 | undefined {
         testCases = db.prepare(`SELECT * FROM test_cases WHERE id IN (${placeholders})`).all(...ids) as TestCase[];
       }
     } catch {
-      // 解析失败，忽略
+      // Parse failed, ignore
     }
   }
 
@@ -761,14 +761,14 @@ export function getBenchmarkWithTestSet(id: number): BenchmarkV2 | undefined {
   };
 }
 
-// 创建 Benchmark（使用 test_set_id）
+// Create Benchmark (using test_set_id)
 export function createBenchmarkV2(
   benchmark: Omit<BenchmarkV2, 'id' | 'created_at' | 'updated_at' | 'test_cases' | 'test_set'>
 ): BenchmarkV2 {
   const db = getDatabase();
   const now = new Date().toISOString();
 
-  // 保持向后兼容：同时设置 test_case_ids
+  // Keep backward compatible: also set test_case_ids
   let testCaseIds = '[]';
   if (benchmark.test_set_id) {
     const { getTestSetCaseIds } = require('./testset');
@@ -793,7 +793,7 @@ export function createBenchmarkV2(
   return getBenchmarkWithTestSet(result.lastInsertRowid as number)!;
 }
 
-// 更新 Benchmark
+// Update Benchmark
 export function updateBenchmarkV2(
   id: number,
   benchmark: Partial<Omit<BenchmarkV2, 'id' | 'created_at' | 'updated_at' | 'test_cases' | 'test_set'>>
@@ -813,7 +813,7 @@ export function updateBenchmarkV2(
     sets.push('test_set_id = ?');
     values.push(benchmark.test_set_id);
 
-    // 同时更新 test_case_ids 以保持向后兼容
+    // Also update test_case_ids to maintain backward compatibility
     if (benchmark.test_set_id) {
       const { getTestSetCaseIds } = require('./testset');
       const ids = getTestSetCaseIds(benchmark.test_set_id);
@@ -833,7 +833,7 @@ export function updateBenchmarkV2(
   return getBenchmarkWithTestSet(id)!;
 }
 
-// 获取所有 Benchmark（包含测试集信息）
+// Get all Benchmarks (including test set information)
 export function getAllBenchmarksV2(): BenchmarkV2[] {
   const db = getDatabase();
   const benchmarks = db.prepare('SELECT * FROM benchmarks ORDER BY created_at DESC').all() as Benchmark[];
@@ -841,7 +841,7 @@ export function getAllBenchmarksV2(): BenchmarkV2[] {
   return benchmarks.map(b => getBenchmarkWithTestSet(b.id)!).filter(Boolean);
 }
 
-// ==================== Integration 相关操作 ====================
+// ==================== Integration related operations ====================
 
 export interface Integration {
   id: number;
@@ -906,7 +906,7 @@ export function deleteIntegration(id: number): void {
   db.prepare('DELETE FROM integrations WHERE id = ?').run(id);
 }
 
-// ==================== Execution Traces 相关操作 ====================
+// ==================== Execution Traces related operations ====================
 
 export interface ExecutionTrace {
   id: number;
@@ -955,7 +955,7 @@ export function updateExecutionTraceSyncTime(result_id: number): void {
   db.prepare('UPDATE execution_traces SET synced_at = CURRENT_TIMESTAMP WHERE result_id = ?').run(result_id);
 }
 
-// ==================== Result 更新操作 ====================
+// ==================== Result update operations ====================
 
 export function updateResult(id: number, result: Partial<Pick<Result, 'status' | 'actual_output' | 'execution_steps' | 'execution_answer' | 'output_file' | 'execution_time_ms' | 'error_message' | 'evaluation_error' | 'started_at' | 'completed_at'>>): Result {
   const db = getDatabase();
@@ -978,7 +978,7 @@ export function updateResult(id: number, result: Partial<Pick<Result, 'status' |
   return db.prepare('SELECT * FROM benchmark_results WHERE id = ?').get(id) as Result;
 }
 
-// ==================== Diagnosis Results 相关操作 ====================
+// ==================== Diagnosis Results related operations ====================
 
 export interface DiagnosisResult {
   id: number;

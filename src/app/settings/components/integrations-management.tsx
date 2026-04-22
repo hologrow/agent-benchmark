@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LangfuseClient } from "@langfuse/client";
 import {
   Card,
   CardContent,
@@ -22,6 +21,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -31,42 +37,126 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Loader2, ExternalLink, Settings, Puzzle } from "lucide-react";
+import { api } from "@/lib/api";
+import type { Integration } from "@/types/api";
 
-interface LangfuseConfig {
-  publicKey: string;
-  secretKey: string;
-  baseUrl: string;
-}
-
-interface Integration {
-  id: number;
+// Plugin metadata definitions
+interface PluginMeta {
+  id: string;
   name: string;
-  type: string;
-  enabled: number;
-  config: string;
-  created_at: string;
-  updated_at: string;
+  description: string;
+  icon: string;
+  capabilities: string[];
+  configFields: ConfigField[];
 }
 
-const defaultLangfuseConfig: LangfuseConfig = {
-  publicKey: "",
-  secretKey: "",
-  baseUrl: "https://cloud.langfuse.com",
-};
+interface ConfigField {
+  name: string;
+  label: string;
+  type: "text" | "password" | "url" | "select" | "textarea";
+  required?: boolean;
+  defaultValue?: string | number | boolean;
+  placeholder?: string;
+  description?: string;
+  options?: { label: string; value: string }[];
+}
+
+// Bundled plugin metadata
+const BUILTIN_PLUGINS: PluginMeta[] = [
+  {
+    id: "langfuse",
+    name: "Langfuse",
+    description: "Trace tracking service",
+    icon: "/langfuse.png",
+    capabilities: ["trace:execution"],
+    configFields: [
+      {
+        name: "baseUrl",
+        label: "Base URL",
+        type: "url",
+        required: true,
+        defaultValue: "https://cloud.langfuse.com",
+        placeholder: "https://cloud.langfuse.com",
+        description: "Langfuse service URL, keep default for cloud version, fill custom domain for self-hosted",
+      },
+      {
+        name: "publicKey",
+        label: "Public Key",
+        type: "text",
+        required: true,
+        placeholder: "pk-lf-...",
+        description: "Public Key from Langfuse project settings",
+      },
+      {
+        name: "secretKey",
+        label: "Secret Key",
+        type: "password",
+        required: true,
+        placeholder: "sk-lf-...",
+        description: "Secret Key from Langfuse project settings",
+      },
+    ],
+  },
+  {
+    id: "lark",
+    name: "Lark/Feishu",
+    description: "Import test cases from Lark/Feishu",
+    icon: "/lark.png",
+    capabilities: ["import:test-cases"],
+    configFields: [
+      {
+        name: "appType",
+        label: "App Type",
+        type: "select",
+        required: true,
+        defaultValue: "feishu",
+        description: "Choose Lark (International) or Feishu (China)",
+        options: [
+          { label: "Feishu (China)", value: "feishu" },
+          { label: "Lark (International)", value: "lark" },
+        ],
+      },
+      {
+        name: "appId",
+        label: "App ID",
+        type: "text",
+        required: true,
+        placeholder: "cli_xxx",
+        description: "App ID from Lark/Feishu developer console",
+      },
+      {
+        name: "appSecret",
+        label: "App Secret",
+        type: "password",
+        required: true,
+        placeholder: "xxx",
+        description: "App Secret from Lark/Feishu developer console",
+      },
+      {
+        name: "baseUrl",
+        label: "Custom Domain",
+        type: "url",
+        required: false,
+        placeholder: "https://open.feishu.cn",
+        description: "For private deployment, fill in custom domain (optional)",
+      },
+    ],
+  },
+];
 
 export function IntegrationsManagement() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  // Integrations list
+  // Integrations list from database
   const [integrations, setIntegrations] = useState<Integration[]>([]);
 
-  // Langfuse configuration (for dialog editing)
-  const [langfuseEnabled, setLangfuseEnabled] = useState(false);
-  const [langfuseConfig, setLangfuseConfig] = useState<LangfuseConfig>(
-    defaultLangfuseConfig,
-  );
+  // Currently editing plugin
+  const [currentPlugin, setCurrentPlugin] = useState<PluginMeta | null>(null);
+  const [currentConfig, setCurrentConfig] = useState<Record<string, unknown>>({});
+  const [currentEnabled, setCurrentEnabled] = useState(false);
 
   useEffect(() => {
     fetchIntegrations();
@@ -74,123 +164,189 @@ export function IntegrationsManagement() {
 
   const fetchIntegrations = async () => {
     try {
-      const response = await fetch("/api/integrations");
-      const data = await response.json();
-      const integrationsList = data.integrations || [];
-      setIntegrations(integrationsList);
+      const data = await api.integrations.list();
+      setIntegrations(data.integrations || []);
     } catch (error) {
       console.error("Error fetching integrations:", error);
-      toast.error("获取集成配置失败");
+      toast.error("Failed to fetch integration configuration");
     } finally {
       setLoading(false);
     }
   };
 
-  const getLangfuseIntegration = () => {
-    return integrations.find((i) => i.type === "langfuse");
+  const getIntegration = (type: string) => {
+    return integrations.find((i) => i.type === type);
   };
 
-  const handleOpenDialog = () => {
-    const langfuseIntegration = getLangfuseIntegration();
-    if (langfuseIntegration) {
-      setLangfuseEnabled(langfuseIntegration.enabled === 1);
+  const handleOpenDialog = (plugin: PluginMeta) => {
+    setCurrentPlugin(plugin);
+
+    const integration = getIntegration(plugin.id);
+    if (integration) {
+      setCurrentEnabled(integration.enabled);
       try {
-        const parsed = JSON.parse(langfuseIntegration.config);
-        setLangfuseConfig({
-          ...defaultLangfuseConfig,
-          ...parsed,
-        });
+        const parsed = JSON.parse(integration.config);
+        // Merge with defaults
+        const configWithDefaults: Record<string, unknown> = {};
+        for (const field of plugin.configFields) {
+          configWithDefaults[field.name] = parsed[field.name] ?? field.defaultValue ?? "";
+        }
+        setCurrentConfig(configWithDefaults);
       } catch {
-        setLangfuseConfig(defaultLangfuseConfig);
+        // Use defaults
+        const defaults: Record<string, unknown> = {};
+        for (const field of plugin.configFields) {
+          defaults[field.name] = field.defaultValue ?? "";
+        }
+        setCurrentConfig(defaults);
       }
     } else {
-      setLangfuseEnabled(false);
-      setLangfuseConfig(defaultLangfuseConfig);
+      setCurrentEnabled(false);
+      // Use defaults
+      const defaults: Record<string, unknown> = {};
+      for (const field of plugin.configFields) {
+        defaults[field.name] = field.defaultValue ?? "";
+      }
+      setCurrentConfig(defaults);
     }
     setDialogOpen(true);
   };
 
-  const saveLangfuseIntegration = async () => {
+  const saveIntegration = async () => {
+    if (!currentPlugin) return;
+
     setSaving(true);
     try {
-      const response = await fetch("/api/integrations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "langfuse",
-          name: "Langfuse",
-          enabled: langfuseEnabled,
-          config: langfuseConfig,
-        }),
+      await api.integrations.update(currentPlugin.id, {
+        enabled: currentEnabled,
+        config: currentConfig,
       });
 
-      if (response.ok) {
-        toast.success("Langfuse 配置已保存");
-        setDialogOpen(false);
-        fetchIntegrations();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "保存失败");
-      }
+      toast.success(`${currentPlugin.name} configuration saved`);
+      setDialogOpen(false);
+      fetchIntegrations();
     } catch (error) {
       console.error("Error saving integration:", error);
-      toast.error("保存失败");
+      const message = error instanceof Error ? error.message : "Save failed";
+      toast.error(message);
     } finally {
       setSaving(false);
     }
   };
 
   const testConnection = async () => {
-    toast.info("正在测试连接...");
-    const langfuse = new LangfuseClient({
-      publicKey: langfuseConfig.publicKey,
-      secretKey: langfuseConfig.secretKey,
-      baseUrl: langfuseConfig.baseUrl,
-    });
-    return langfuse.api.health
-      .health()
-      .then((response) => {
-        toast.success("连接测试成功！langfuse version:" + response.version);
-      })
-      .catch(() => {
-        toast.error("连接失败");
-      });
+    if (!currentPlugin) return;
+
+    setTesting(true);
+    toast.info("Testing connection...");
+
+    try {
+      const result = await api.integrations.testConnection(currentPlugin.id);
+
+      if (result.success) {
+        toast.success(result.message || "Connection test successful");
+      } else {
+        toast.error(result.message || "Connection test failed");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error occurred during connection test";
+      toast.error(message);
+    } finally {
+      setTesting(false);
+    }
   };
 
-  const toggleIntegration = async (integration: Integration) => {
+  const toggleIntegration = async (plugin: PluginMeta) => {
+    const integration = getIntegration(plugin.id);
+    const newEnabled = integration ? !integration.enabled : true;
+
     try {
-      const newEnabled = integration.enabled === 1 ? 0 : 1;
+      const config = integration
+        ? JSON.parse(integration.config || "{}")
+        : getDefaultConfig(plugin);
+
       const response = await fetch("/api/integrations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: integration.type,
-          name: integration.name,
+          type: plugin.id,
+          name: plugin.name,
           enabled: newEnabled,
-          config: JSON.parse(integration.config || "{}"),
+          config,
         }),
       });
 
       if (response.ok) {
-        toast.success(`${integration.name} 已${newEnabled === 1 ? "启用" : "禁用"}`);
+        toast.success(`${plugin.name} ${newEnabled ? "enabled" : "disabled"}`);
         fetchIntegrations();
       } else {
         const error = await response.json();
-        toast.error(error.error || "操作失败");
+        toast.error(error.error || "Operation failed");
       }
     } catch (error) {
       console.error("Error toggling integration:", error);
-      toast.error("操作失败");
+      toast.error("Operation failed");
     }
   };
 
-  const getLangfuseDisplayConfig = () => {
-    const integration = getLangfuseIntegration();
-    if (!integration) return null;
-    try {
-      return JSON.parse(integration.config) as LangfuseConfig;
-    } catch {
-      return null;
+  const getDefaultConfig = (plugin: PluginMeta): Record<string, unknown> => {
+    const defaults: Record<string, unknown> = {};
+    for (const field of plugin.configFields) {
+      defaults[field.name] = field.defaultValue ?? "";
+    }
+    return defaults;
+  };
+
+  const renderConfigField = (field: ConfigField) => {
+    const value = currentConfig[field.name] ?? "";
+
+    switch (field.type) {
+      case "select":
+        return (
+          <Select
+            value={String(value)}
+            onValueChange={(val) =>
+              setCurrentConfig({ ...currentConfig, [field.name]: val })
+            }
+          >
+            <SelectTrigger id={`field-${field.name}`}>
+              <SelectValue placeholder={field.placeholder} />
+            </SelectTrigger>
+            <SelectContent>
+              {field.options?.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+
+      case "textarea":
+        return (
+          <textarea
+            id={`field-${field.name}`}
+            className="w-full min-h-[100px] px-3 py-2 border rounded-md text-sm"
+            placeholder={field.placeholder}
+            value={String(value)}
+            onChange={(e) =>
+              setCurrentConfig({ ...currentConfig, [field.name]: e.target.value })
+            }
+          />
+        );
+
+      default:
+        return (
+          <Input
+            id={`field-${field.name}`}
+            type={field.type}
+            placeholder={field.placeholder}
+            value={String(value)}
+            onChange={(e) =>
+              setCurrentConfig({ ...currentConfig, [field.name]: e.target.value })
+            }
+          />
+        );
     }
   };
 
@@ -202,85 +358,82 @@ export function IntegrationsManagement() {
     );
   }
 
-  const langfuseIntegration = getLangfuseIntegration();
-  const langfuseDisplayConfig = getLangfuseDisplayConfig();
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">外部工具集成</h2>
+          <h2 className="text-2xl font-bold">External Integrations</h2>
           <p className="text-muted-foreground mt-1">
-            配置与第三方服务的集成，扩展平台功能
+            Configure integrations with third-party services to extend platform capabilities
           </p>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>集成列表</CardTitle>
-          <CardDescription>管理已配置的外部工具集成</CardDescription>
+          <CardTitle>Integration List</CardTitle>
+          <CardDescription>Manage configured external tool integrations</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>名称</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>Base URL</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead className="text-right">操作</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Features</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {/* Langfuse Integration */}
-              <TableRow>
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    <img
-                      src="/langfuse.png"
-                      alt="Langfuse"
-                      className="h-5 w-5 object-contain"
-                    />
-                    Langfuse
-                  </div>
-                </TableCell>
-                <TableCell>路径追踪</TableCell>
-                <TableCell className="font-mono text-xs">
-                  {langfuseDisplayConfig?.baseUrl || "https://cloud.langfuse.com"}
-                </TableCell>
-                <TableCell>
-                  <Switch
-                    checked={langfuseIntegration?.enabled === 1}
-                    onCheckedChange={() =>
-                      langfuseIntegration && toggleIntegration(langfuseIntegration)
-                    }
-                  />
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button size="sm" variant="outline" onClick={handleOpenDialog}>
-                    <Settings className="h-4 w-4 mr-1" />
-                    编辑
-                  </Button>
-                </TableCell>
-              </TableRow>
+              {BUILTIN_PLUGINS.map((plugin) => {
+                const integration = getIntegration(plugin.id);
+                const isEnabled = integration?.enabled;
 
-              {/* Empty state */}
-              {!langfuseIntegration && (
+                return (
+                  <TableRow key={plugin.id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={plugin.icon}
+                          alt={plugin.name}
+                          className="h-5 w-5 object-contain"
+                          onError={(e) => {
+                            // Fallback to puzzle icon if image fails to load
+                            (e.target as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                        {plugin.name}
+                      </div>
+                    </TableCell>
+                    <TableCell>{plugin.description}</TableCell>
+                    <TableCell>
+                      <Switch
+                        checked={isEnabled}
+                        onCheckedChange={() => toggleIntegration(plugin)}
+                      />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleOpenDialog(plugin)}
+                      >
+                        <Settings className="h-4 w-4 mr-1" />
+                        {integration ? "Edit" : "Configure"}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+
+              {BUILTIN_PLUGINS.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={4}
                     className="text-center py-12 text-muted-foreground"
                   >
                     <Puzzle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <p>暂无集成配置</p>
-                    <Button
-                      variant="outline"
-                      className="mt-4"
-                      onClick={handleOpenDialog}
-                    >
-                      配置 Langfuse
-                    </Button>
+                    <p>No integrations available</p>
                   </TableCell>
                 </TableRow>
               )}
@@ -289,102 +442,79 @@ export function IntegrationsManagement() {
         </CardContent>
       </Card>
 
-      {/* Langfuse Configuration Dialog */}
+      {/* Configuration Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <img
-                src="/langfuse.png"
-                alt="Langfuse"
-                className="h-6 w-6 object-contain"
-              />
-              Langfuse 配置
-              <a
-                href="https://langfuse.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-primary"
-              >
-                <ExternalLink className="h-4 w-4" />
-              </a>
+              {currentPlugin && (
+                <>
+                  <img
+                    src={currentPlugin.icon}
+                    alt={currentPlugin.name}
+                    className="h-6 w-6 object-contain"
+                  />
+                  {currentPlugin.name} Configuration
+                  <a
+                    href={
+                      currentPlugin.id === "langfuse"
+                        ? "https://langfuse.com"
+                        : currentPlugin.id === "lark"
+                          ? "https://open.feishu.cn"
+                          : "#"
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-muted-foreground hover:text-primary"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </>
+              )}
             </DialogTitle>
-            <DialogDescription>配置 Langfuse 路径追踪服务</DialogDescription>
+            <DialogDescription>
+              {currentPlugin?.description}
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="flex items-center justify-between">
-              <Label htmlFor="langfuse-enabled">启用集成</Label>
+              <Label htmlFor="plugin-enabled">Enable Integration</Label>
               <Switch
-                id="langfuse-enabled"
-                checked={langfuseEnabled}
-                onCheckedChange={setLangfuseEnabled}
+                id="plugin-enabled"
+                checked={currentEnabled}
+                onCheckedChange={setCurrentEnabled}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="langfuse-base-url">Base URL</Label>
-              <Input
-                id="langfuse-base-url"
-                placeholder="https://cloud.langfuse.com"
-                value={langfuseConfig.baseUrl}
-                onChange={(e) =>
-                  setLangfuseConfig({
-                    ...langfuseConfig,
-                    baseUrl: e.target.value,
-                  })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Langfuse 服务地址，使用云版本请保持默认，自建请填写自定义域名
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="langfuse-public-key">Public Key</Label>
-              <Input
-                id="langfuse-public-key"
-                placeholder="pk-lf-..."
-                value={langfuseConfig.publicKey}
-                onChange={(e) =>
-                  setLangfuseConfig({
-                    ...langfuseConfig,
-                    publicKey: e.target.value,
-                  })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                从 Langfuse 项目设置中获取的 Public Key
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="langfuse-secret-key">Secret Key</Label>
-              <Input
-                id="langfuse-secret-key"
-                type="password"
-                placeholder="sk-lf-..."
-                value={langfuseConfig.secretKey}
-                onChange={(e) =>
-                  setLangfuseConfig({
-                    ...langfuseConfig,
-                    secretKey: e.target.value,
-                  })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                从 Langfuse 项目设置中获取的 Secret Key
-              </p>
-            </div>
+            {currentPlugin?.configFields.map((field) => (
+              <div key={field.name} className="space-y-2">
+                <Label htmlFor={`field-${field.name}`}>
+                  {field.label}
+                  {field.required && <span className="text-red-500 ml-1">*</span>}
+                </Label>
+                {renderConfigField(field)}
+                {field.description && (
+                  <p className="text-xs text-muted-foreground">
+                    {field.description}
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={testConnection} disabled={saving}>
-              测试连接
+            <Button
+              variant="outline"
+              onClick={testConnection}
+              disabled={testing || saving}
+            >
+              {testing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Test Connection
             </Button>
-            <Button onClick={saveLangfuseIntegration} disabled={saving}>
+            <Button onClick={saveIntegration} disabled={saving}>
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              保存
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>

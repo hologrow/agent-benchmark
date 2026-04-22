@@ -41,30 +41,18 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
+import { api } from '@/lib/api';
+import { formatDateTimeLocal } from '@/lib/format-datetime';
+import type { Agent } from '@/types/api';
 
 type AgentType = 'openclaw' | 'hermes' | 'other';
 
-interface Agent {
-  id: number;
-  name: string;
-  description: string;
-  command: string;
-  agent_type: AgentType;
-  config_json: string;
-  created_at: string;
-}
-
-interface OpenClawConfig {
-  url: string;
-  token: string;
-}
-
-interface CommandAgentConfig {
-  command: string;
+interface LocalAgent extends Agent {
+  command?: string;
 }
 
 const formSchema = z.object({
-  name: z.string().min(1, '名称不能为空'),
+  name: z.string().min(1, 'Name is required'),
   description: z.string().optional(),
   agentType: z.enum(['openclaw', 'hermes', 'other'] as const),
   openclawUrl: z.string().optional(),
@@ -76,23 +64,23 @@ type FormData = z.infer<typeof formSchema>;
 
 const defaultCommand = `acpx agent-name exec "{{prompt}}"`;
 
-const commandExamples = `# 本地 acpx
+const commandExamples = `# Local acpx
 acpx myagent exec "{{prompt}}"
 
-# Docker 方式
+# Docker mode
 docker run --rm myimage python -c "print('{{prompt}}')"
 
-# SSH 远程执行
+# SSH remote execution
 ssh user@host "acpx myagent exec '{{prompt}}'"
 
-# 带额外参数
+# With extra parameters
 acpx --approve-all --format json myagent exec "{{prompt}}"
 
-# 使用执行批次ID创建日志目录
+# Use execution batch ID to create log directory
 acpx --log-dir ./logs/{{execution_id}} myagent exec "{{prompt}}"`;
 
 export function AgentManagement() {
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agents, setAgents] = useState<LocalAgent[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
@@ -119,12 +107,11 @@ export function AgentManagement() {
 
   const fetchAgents = async () => {
     try {
-      const response = await fetch('/api/agents');
-      const data = await response.json();
+      const data = await api.agents.list();
       setAgents(data.agents || []);
     } catch (error) {
       console.error('Error fetching agents:', error);
-      toast.error('获取 Agent 失败');
+      toast.error('Failed to fetch Agents');
     } finally {
       setLoading(false);
     }
@@ -132,69 +119,53 @@ export function AgentManagement() {
 
   const onSubmit = async (values: FormData) => {
     try {
-      const url = editingAgent ? `/api/agents/${editingAgent.id}` : '/api/agents';
-      const method = editingAgent ? 'PUT' : 'POST';
-
       let configJson: Record<string, string> = {};
-      let command = '';
 
       if (values.agentType === 'openclaw') {
         if (!values.openclawUrl || !values.openclawToken) {
-          toast.error('OpenClaw 类型需要填写 URL 和 Token');
+          toast.error('OpenClaw type requires URL and Token');
           return;
         }
-        const openclawConfig: OpenClawConfig = {
+        configJson = {
           url: values.openclawUrl,
           token: values.openclawToken,
         };
-        configJson = {
-          url: openclawConfig.url,
-          token: openclawConfig.token,
-        };
-        command = `openclaw --url ${values.openclawUrl} --token ***`;
       } else {
         if (!values.command) {
-          toast.error('命令行不能为空');
+          toast.error('Command is required');
           return;
         }
-        const commandConfig: CommandAgentConfig = {
+        configJson = {
           command: values.command,
         };
-        configJson = {
-          command: commandConfig.command,
-        };
-        command = values.command;
       }
 
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: values.name,
-          description: values.description,
-          agent_type: values.agentType,
-          command,
-          config_json: configJson,
-        }),
-      });
+      const payload = {
+        name: values.name,
+        description: values.description || '',
+        agent_type: values.agentType,
+        config: configJson,
+      };
 
-      if (response.ok) {
-        toast.success(editingAgent ? 'Agent 已更新' : 'Agent 已创建');
-        setDialogOpen(false);
-        form.reset();
-        setEditingAgent(null);
-        fetchAgents();
+      if (editingAgent) {
+        await api.agents.update(editingAgent.id, payload);
       } else {
-        const error = await response.json();
-        toast.error(error.error || '操作失败');
+        await api.agents.create(payload);
       }
+
+      toast.success(editingAgent ? 'Agent updated' : 'Agent created');
+      setDialogOpen(false);
+      form.reset();
+      setEditingAgent(null);
+      fetchAgents();
     } catch (error) {
       console.error('Error saving agent:', error);
-      toast.error('保存失败');
+      const message = error instanceof Error ? error.message : 'Save failed';
+      toast.error(message);
     }
   };
 
-  const handleEdit = (agent: Agent) => {
+  const handleEdit = (agent: LocalAgent) => {
     setEditingAgent(agent);
 
     let config: Record<string, unknown> = {};
@@ -208,9 +179,9 @@ export function AgentManagement() {
       name: agent.name,
       description: agent.description,
       agentType: agent.agent_type || 'other',
-      openclawUrl: (config as unknown as OpenClawConfig).url || '',
-      openclawToken: (config as unknown as OpenClawConfig).token || '',
-      command: (config as unknown as CommandAgentConfig).command || agent.command || defaultCommand,
+      openclawUrl: (config.url as string) || '',
+      openclawToken: (config.token as string) || '',
+      command: (config.command as string) || agent.command || defaultCommand,
     });
     setDialogOpen(true);
   };
@@ -219,21 +190,15 @@ export function AgentManagement() {
     if (!deletingAgent) return;
 
     try {
-      const response = await fetch(`/api/agents/${deletingAgent.id}`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        toast.success('Agent 已删除');
-        setDeleteDialogOpen(false);
-        setDeletingAgent(null);
-        fetchAgents();
-      } else {
-        toast.error('删除失败');
-      }
+      await api.agents.delete(deletingAgent.id);
+      toast.success('Agent deleted');
+      setDeleteDialogOpen(false);
+      setDeletingAgent(null);
+      fetchAgents();
     } catch (error) {
       console.error('Error deleting agent:', error);
-      toast.error('删除失败');
+      const message = error instanceof Error ? error.message : 'Delete failed';
+      toast.error(message);
     }
   };
 
@@ -248,10 +213,6 @@ export function AgentManagement() {
       command: defaultCommand,
     });
     setDialogOpen(true);
-  };
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('zh-CN');
   };
 
   const getAgentTypeLabel = (type: AgentType) => {
@@ -271,19 +232,19 @@ export function AgentManagement() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Agent 管理</h2>
-          <p className="text-muted-foreground mt-1">管理用于执行 Benchmark 的 AI Agents</p>
+          <h2 className="text-2xl font-bold">Agent Management</h2>
+          <p className="text-muted-foreground mt-1">Manage AI Agents for executing Benchmark</p>
         </div>
         <Button onClick={openCreateDialog}>
           <Plus className="h-4 w-4 mr-2" />
-          新建 Agent
+          New Agent
         </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Agent 列表</CardTitle>
-          <CardDescription>共 {agents.length} 个 Agent</CardDescription>
+          <CardTitle>Agent List</CardTitle>
+          <CardDescription>{agents.length} Agents</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -293,21 +254,21 @@ export function AgentManagement() {
           ) : agents.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>暂无 Agent</p>
+              <p>No Agents</p>
               <Button variant="outline" className="mt-4" onClick={openCreateDialog}>
-                创建第一个 Agent
+                Create your first Agent
               </Button>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>类型</TableHead>
-                  <TableHead>描述</TableHead>
-                  <TableHead>配置预览</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Config Preview</TableHead>
+                  <TableHead>Created At</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -322,7 +283,7 @@ export function AgentManagement() {
                     <TableCell className="max-w-xs truncate">{agent.description || '-'}</TableCell>
                     <TableCell className="max-w-md truncate font-mono text-xs">
                       {agent.agent_type === 'openclaw' ? (
-                        <span className="text-muted-foreground">OpenClaw 配置</span>
+                        <span className="text-muted-foreground">OpenClaw Config</span>
                       ) : (
                         (() => {
                           try {
@@ -334,7 +295,7 @@ export function AgentManagement() {
                         })()
                       )}
                     </TableCell>
-                    <TableCell>{formatDate(agent.created_at)}</TableCell>
+                    <TableCell>{formatDateTimeLocal(agent.created_at)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(agent)}>
@@ -363,9 +324,9 @@ export function AgentManagement() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingAgent ? '编辑 Agent' : '新建 Agent'}</DialogTitle>
+            <DialogTitle>{editingAgent ? 'Edit Agent' : 'New Agent'}</DialogTitle>
             <DialogDescription>
-              配置 Agent 名称、类型和对应参数
+Configure Agent name, type and corresponding parameters
             </DialogDescription>
           </DialogHeader>
 
@@ -376,9 +337,9 @@ export function AgentManagement() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Agent 名称</FormLabel>
+                    <FormLabel>Agent Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="如：hermes, openclaw" {...field} />
+                      <Input placeholder="e.g.: hermes, openclaw" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -390,9 +351,9 @@ export function AgentManagement() {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>描述</FormLabel>
+                    <FormLabel>Description</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Agent 描述" {...field} />
+                      <Textarea placeholder="Agent description" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -404,7 +365,7 @@ export function AgentManagement() {
                 name="agentType"
                 render={({ field }) => (
                   <FormItem className="space-y-3">
-                    <FormLabel>Agent 类型</FormLabel>
+                    <FormLabel>Agent Type</FormLabel>
                     <FormControl>
                       <RadioGroup
                         onValueChange={field.onChange}
@@ -418,7 +379,7 @@ export function AgentManagement() {
                           </FormControl>
                           <FormLabel className="font-normal cursor-pointer">
                             <span className="font-medium">OpenClaw</span>
-                            <span className="text-muted-foreground text-sm ml-2">通过 URL 和 Token 连接 OpenClaw 服务</span>
+                            <span className="text-muted-foreground text-sm ml-2">Connect to OpenClaw service via URL and Token</span>
                           </FormLabel>
                         </FormItem>
                         <FormItem className="flex items-center space-x-3 space-y-0">
@@ -427,7 +388,7 @@ export function AgentManagement() {
                           </FormControl>
                           <FormLabel className="font-normal cursor-pointer">
                             <span className="font-medium">Hermes</span>
-                            <span className="text-muted-foreground text-sm ml-2">使用 Hermes CLI 执行</span>
+                            <span className="text-muted-foreground text-sm ml-2">Execute using Hermes CLI</span>
                           </FormLabel>
                         </FormItem>
                         <FormItem className="flex items-center space-x-3 space-y-0">
@@ -436,7 +397,7 @@ export function AgentManagement() {
                           </FormControl>
                           <FormLabel className="font-normal cursor-pointer">
                             <span className="font-medium">Other</span>
-                            <span className="text-muted-foreground text-sm ml-2">自定义命令行执行</span>
+                            <span className="text-muted-foreground text-sm ml-2">Custom command line execution</span>
                           </FormLabel>
                         </FormItem>
                       </RadioGroup>
@@ -448,7 +409,7 @@ export function AgentManagement() {
 
               {agentType === 'openclaw' && (
                 <div className="space-y-4 border rounded-lg p-4 bg-muted/50">
-                  <h4 className="font-medium text-sm">OpenClaw 配置</h4>
+                  <h4 className="font-medium text-sm">OpenClaw Config</h4>
                   <FormField
                     control={form.control}
                     name="openclawUrl"
@@ -456,7 +417,7 @@ export function AgentManagement() {
                       <FormItem>
                         <FormLabel>OpenClaw URL</FormLabel>
                         <FormControl>
-                          <Input placeholder="如：http://localhost:8080" {...field} />
+                          <Input placeholder="e.g.: http://localhost:8080" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -469,7 +430,7 @@ export function AgentManagement() {
                       <FormItem>
                         <FormLabel>Token</FormLabel>
                         <FormControl>
-                          <Input type="password" placeholder="OpenClaw 访问令牌" {...field} />
+                          <Input type="password" placeholder="OpenClaw access token" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -485,10 +446,10 @@ export function AgentManagement() {
                     name="command"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>执行命令</FormLabel>
+                        <FormLabel>Execution Command</FormLabel>
                         <FormControl>
                           <Textarea
-                            placeholder="输入执行命令，可使用 {{prompt}}、{{execution_id}} 等变量"
+                            placeholder="Enter execution command, can use {{prompt}}, {{execution_id}} and other variables"
                             className="min-h-[100px] font-mono text-sm"
                             {...field}
                           />
@@ -499,21 +460,21 @@ export function AgentManagement() {
                   />
 
                   <div className="bg-muted p-4 rounded-md">
-                    <h4 className="font-semibold mb-2 text-sm">可用变量</h4>
+                    <h4 className="font-semibold mb-2 text-sm">Available Variables</h4>
                     <div className="space-y-2">
                       <div className="flex items-start gap-2">
                         <code className="text-xs bg-background px-1.5 py-0.5 rounded font-mono text-primary">{'{{prompt}}'}</code>
-                        <span className="text-xs text-muted-foreground">测试用例输入内容或训练指令</span>
+                        <span className="text-xs text-muted-foreground">Test case input content or training instructions</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <code className="text-xs bg-background px-1.5 py-0.5 rounded font-mono text-primary">{'{{execution_id}}'}</code>
-                        <span className="text-xs text-muted-foreground">执行批次ID，例如 #14，可用于创建日志目录或标识执行批次</span>
+                        <span className="text-xs text-muted-foreground">Execution batch ID, e.g. #14, can be used to create log directories or identify execution batches</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="bg-muted p-4 rounded-md">
-                    <h4 className="font-semibold mb-2 text-sm">命令示例</h4>
+                    <h4 className="font-semibold mb-2 text-sm">Command Examples</h4>
                     <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono">
                       {commandExamples}
                     </pre>
@@ -522,7 +483,7 @@ export function AgentManagement() {
               )}
 
               <DialogFooter>
-                <Button type="submit">{editingAgent ? '保存' : '创建'}</Button>
+                <Button type="submit">{editingAgent ? 'Save' : 'Create'}</Button>
               </DialogFooter>
             </form>
           </Form>
@@ -532,17 +493,17 @@ export function AgentManagement() {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认删除</DialogTitle>
+            <DialogTitle>Confirm Delete</DialogTitle>
             <DialogDescription>
-              确定要删除 Agent &quot;{deletingAgent?.name}&quot; 吗？此操作不可撤销。
+              Are you sure you want to delete Agent &quot;{deletingAgent?.name}&quot;? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
-              取消
+              Cancel
             </Button>
             <Button variant="destructive" onClick={handleDelete}>
-              删除
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

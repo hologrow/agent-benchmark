@@ -5,7 +5,7 @@ import {
   deleteAgent
 } from '@/lib/db';
 
-// GET /api/agents/:id - 获取单个 agent
+// GET /api/agents/:id - get one agent
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -31,7 +31,7 @@ export async function GET(
   }
 }
 
-// PUT /api/agents/:id - 更新 agent
+// PUT /api/agents/:id - update agent
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -49,7 +49,7 @@ export async function PUT(
       );
     }
 
-    // 验证agent_type
+    // Validate agent_type
     if (agent_type !== undefined) {
       if (!['openclaw', 'hermes', 'other'].includes(agent_type)) {
         return NextResponse.json(
@@ -79,7 +79,7 @@ export async function PUT(
   }
 }
 
-// DELETE /api/agents/:id - 删除 agent
+// DELETE /api/agents/:id - delete agent
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

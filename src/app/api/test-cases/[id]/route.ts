@@ -5,7 +5,7 @@ import {
   deleteTestCase
 } from '@/lib/db';
 
-// GET /api/test-cases/:id - 获取单个测试用例
+// GET /api/test-cases/:id - one test case
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -31,7 +31,7 @@ export async function GET(
   }
 }
 
-// PUT /api/test-cases/:id - 更新测试用例
+// PUT /api/test-cases/:id - update test case
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -85,7 +85,7 @@ export async function PUT(
   }
 }
 
-// DELETE /api/test-cases/:id - 删除测试用例
+// DELETE /api/test-cases/:id - delete test case
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

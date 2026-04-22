@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-Benchmark 诊断脚本
-用于分析测试用例执行失败的原因
+Benchmark diagnosis script — analyzes why a test case execution failed.
 
-用法:
+Usage:
     uv run python run_diagnosis.py <result_id> [model_id]
 """
 
@@ -16,25 +15,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional
 
-# 数据库路径
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'benchmark.db')
 
 
 def log(msg: str):
-    """打印带时间戳的日志"""
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print(f"[{timestamp}] {msg}", flush=True)
 
 
 def get_db_connection():
-    """获取数据库连接"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def get_result_details(result_id: int) -> Optional[Dict]:
-    """获取测试结果详情"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -92,7 +87,6 @@ def get_result_details(result_id: int) -> Optional[Dict]:
 
 
 def get_model_config(model_id: int) -> Optional[Dict]:
-    """获取模型配置"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -109,7 +103,7 @@ def get_model_config(model_id: int) -> Optional[Dict]:
     if model['config']:
         try:
             config = json.loads(model['config'])
-        except:
+        except json.JSONDecodeError:
             pass
 
     return {
@@ -124,7 +118,6 @@ def get_model_config(model_id: int) -> Optional[Dict]:
 
 
 def get_default_model() -> Optional[Dict]:
-    """获取默认模型"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -135,7 +128,6 @@ def get_default_model() -> Optional[Dict]:
 
     model = cursor.fetchone()
     if not model:
-        # 如果没有默认模型，获取第一个
         cursor.execute('''
             SELECT id, name, model_id, provider, api_key, base_url, config
             FROM models LIMIT 1
@@ -149,7 +141,7 @@ def get_default_model() -> Optional[Dict]:
     if model['config']:
         try:
             config = json.loads(model['config'])
-        except:
+        except json.JSONDecodeError:
             pass
 
     return {
@@ -164,35 +156,33 @@ def get_default_model() -> Optional[Dict]:
 
 
 def call_llm(prompt: str, model_config: Dict) -> Dict:
-    """调用 LLM 进行分析"""
     provider = model_config.get('provider', 'openai')
     model_id = model_config.get('model_id')
     api_key = model_config.get('api_key')
     base_url = model_config.get('base_url')
     config = model_config.get('config', {})
 
-    log(f"调用 LLM: {model_id} (provider: {provider})")
+    log(f"Calling LLM: {model_id} (provider: {provider})")
 
     if not api_key:
-        return {'success': False, 'error': '模型未配置 API Key'}
+        return {'success': False, 'error': 'Model has no API key configured'}
 
     if not model_id:
-        return {'success': False, 'error': '模型未配置 Model ID'}
+        return {'success': False, 'error': 'Model has no model_id configured'}
 
     try:
         if provider == 'openai' or provider == 'openrouter':
             return call_openai(prompt, model_id, api_key, base_url, config)
         else:
-            return {'success': False, 'error': f'不支持的 provider: {provider}'}
+            return {'success': False, 'error': f'Unsupported provider: {provider}'}
     except Exception as e:
-        log(f"调用 LLM 异常: {str(e)}")
+        log(f"LLM call error: {str(e)}")
         import traceback
-        log(f"堆栈: {traceback.format_exc()}")
+        log(f"Traceback: {traceback.format_exc()}")
         return {'success': False, 'error': str(e)}
 
 
 def call_openai(prompt: str, model_id: str, api_key: str, base_url: Optional[str], config: Dict) -> Dict:
-    """使用 OpenAI 兼容接口调用"""
     try:
         from openai import OpenAI
 
@@ -203,7 +193,11 @@ def call_openai(prompt: str, model_id: str, api_key: str, base_url: Optional[str
         client = OpenAI(**client_kwargs)
 
         messages = [
-            {'role': 'system', 'content': '你是一位专业的 AI Agent 测试分析专家。你的任务是分析测试用例执行失败的原因，找出期望输出和实际输出之间的差异，并提供详细的诊断报告。'},
+            {'role': 'system', 'content': (
+                'You are an expert in AI agent testing and failure analysis. '
+                'Analyze why the test run failed, contrast expected vs actual output, '
+                'and produce a clear diagnostic report.'
+            )},
             {'role': 'user', 'content': prompt}
         ]
 
@@ -218,147 +212,136 @@ def call_openai(prompt: str, model_id: str, api_key: str, base_url: Optional[str
         return {'success': True, 'content': content}
 
     except Exception as e:
-        return {'success': False, 'error': f'OpenAI API 调用失败: {str(e)}'}
+        return {'success': False, 'error': f'OpenAI API call failed: {str(e)}'}
 
 
 def build_diagnosis_prompt(result: Dict) -> str:
-    """构建诊断提示词"""
-    prompt = f"""请对以下测试用例执行情况进行深入诊断分析。
+    na = '(none)'
+    prompt = f"""Diagnose the following test execution in depth.
 
-## 测试用例信息
-- 测试 ID: {result['test_id']}
-- 测试名称: {result['test_case_name']}
+## Test case
+- Test ID: {result['test_id']}
+- Name: {result['test_case_name']}
 - Agent: {result['agent_name']}
-- 执行状态: {result['status']}
+- Status: {result['status']}
 
-## 输入
+## Input
 {result['test_input']}
 
-## 期望输出
+## Expected output
 {result['expected_output']}
 
-## 关键测试点
-{result['key_points'] or '无'}
+## Key points
+{result['key_points'] or na}
 
-## 禁止点
-{result['forbidden_points'] or '无'}
+## Forbidden points
+{result['forbidden_points'] or na}
 
-## 实际输出
-{result['actual_output'] or '无输出'}
+## Actual output
+{result['actual_output'] or na}
 
-## 执行答案（解析后）
-{result['execution_answer'] or '无'}
+## Parsed answer
+{result['execution_answer'] or na}
 
-## 执行步骤
-{result['execution_steps'] or '无'}
+## Execution steps
+{result['execution_steps'] or na}
 
-## 错误信息
-{result['error_message'] or '无'}
+## Error message
+{result['error_message'] or na}
 
-## Langfuse Trace
-{result['trace_content'] or '无 Trace 数据'}
+## Langfuse trace
+{result['trace_content'] or '(no trace)'}
 
 ---
 
-请提供详细的诊断报告，包含以下内容：
+Produce a detailed diagnosis in Markdown with:
 
-### 1. 问题定位
-- 失败类型（如：理解错误、逻辑错误、工具调用失败、超时等）
-- 具体在哪个环节出现问题
+### 1. Failure localization
+- Failure type (misunderstanding, logic error, tool failure, timeout, etc.)
+- Which stage failed
 
-### 2. 差异分析
-- 期望输出与实际输出的关键差异
-- 是否满足关键测试点
-- 是否违反禁止点
+### 2. Gap analysis
+- Key gaps between expected and actual output
+- Whether key points were met
+- Whether forbidden points were violated
 
-### 3. 根因分析
-- 从 Trace 中发现的异常或问题
-- Agent 行为的异常模式
-- 可能的配置或环境问题
+### 3. Root cause
+- Issues visible in trace (if any)
+- Unusual agent behavior patterns
+- Possible config or environment issues
 
-### 4. 修复建议
-- 如何修复此问题
-- 对 Agent 或测试用例的改进建议
-
-请使用 Markdown 格式输出诊断报告。"""
+### 4. Recommendations
+- How to fix
+- Improvements for the agent or test case
+"""
 
     return prompt
 
 
 def save_diagnosis_result(result_id: int, report: str, model_id: int):
-    """保存诊断结果到数据库"""
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # 先删除旧的诊断结果
     cursor.execute('DELETE FROM diagnosis_results WHERE result_id = ?', (result_id,))
 
-    # 插入新的诊断结果
     cursor.execute('''
         INSERT INTO diagnosis_results (result_id, diagnosis_report, model_id)
         VALUES (?, ?, ?)
     ''', (result_id, report, model_id))
 
     conn.commit()
-    log(f"诊断结果已保存到数据库 (result_id={result_id})")
+    log(f"Diagnosis saved (result_id={result_id})")
 
 
 def run_diagnosis(result_id: int, model_id: Optional[int] = None):
-    """执行诊断"""
-    log(f"开始诊断 result_id={result_id}")
+    log(f"Starting diagnosis result_id={result_id}")
 
-    # 获取测试结果详情
     result = get_result_details(result_id)
     if not result:
-        log(f"错误：未找到测试结果 {result_id}")
+        log(f"Error: benchmark result not found {result_id}")
         sys.exit(1)
 
-    log(f"获取到测试结果: {result['test_id']} - {result['test_case_name']}")
+    log(f"Loaded result: {result['test_id']} — {result['test_case_name']}")
 
-    # 获取模型配置
     if model_id:
         model_config = get_model_config(model_id)
     else:
         model_config = get_default_model()
 
     if not model_config:
-        log("错误：未找到可用的模型配置")
+        log("Error: no model configuration available")
         sys.exit(1)
 
-    log(f"使用模型: {model_config['name']} ({model_config['model_id']})")
+    log(f"Using model: {model_config['name']} ({model_config['model_id']})")
 
-    # 构建诊断提示词
     prompt = build_diagnosis_prompt(result)
-    log(f"诊断提示词长度: {len(prompt)} 字符")
+    log(f"Diagnosis prompt length: {len(prompt)} chars")
 
-    # 调用 LLM 进行分析
-    log("开始调用 LLM 进行分析...")
+    log("Calling LLM...")
     llm_result = call_llm(prompt, model_config)
 
     if not llm_result['success']:
-        log(f"诊断失败: {llm_result['error']}")
+        log(f"Diagnosis failed: {llm_result['error']}")
         sys.exit(1)
 
     diagnosis_report = llm_result['content']
-    log(f"诊断完成，报告长度: {len(diagnosis_report)} 字符")
+    log(f"Done, report length: {len(diagnosis_report)} chars")
 
-    # 保存诊断结果
     save_diagnosis_result(result_id, diagnosis_report, model_config['id'])
 
-    # 输出结果
     print("\n" + "=" * 80)
-    print("诊断报告")
+    print("DIAGNOSIS REPORT")
     print("=" * 80)
     print(diagnosis_report)
     print("=" * 80)
 
-    log("诊断完成")
+    log("Diagnosis finished")
 
 
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
-        print("\n用法:")
+        print("\nUsage:")
         print("    uv run python run_diagnosis.py <result_id> [model_id]")
         sys.exit(1)
 

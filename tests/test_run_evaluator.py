@@ -131,7 +131,7 @@ class TestEvaluateWithOpenAI(unittest.TestCase):
         result = re.evaluate_with_openai("prompt", 'gpt-4', '', None, {})
 
         self.assertFalse(result['success'])
-        self.assertIn('API Key', result['error'])
+        self.assertIn('api key', result['error'].lower())
 
     def test_empty_model_id(self):
         """测试空 model_id"""
@@ -156,7 +156,7 @@ class TestEvaluateWithOpenAI(unittest.TestCase):
         result = re.evaluate_with_openai("prompt", 'gpt-4', 'test-key', None, {})
 
         self.assertFalse(result['success'])
-        self.assertIn('空内容', result['error'])
+        self.assertIn('empty content', result['error'].lower())
 
     @patch('run_evaluator.OpenAI')
     def test_invalid_json_response(self, mock_openai_class):
@@ -238,7 +238,7 @@ class TestEvaluateWithLLM(unittest.TestCase):
         result = re.evaluate_with_llm("prompt", model_config)
 
         self.assertFalse(result['success'])
-        self.assertIn('不支持的 provider', result['error'])
+        self.assertIn('unsupported provider', result['error'].lower())
 
     def test_missing_api_key_in_config(self):
         """测试配置中缺少 API Key"""
@@ -251,7 +251,7 @@ class TestEvaluateWithLLM(unittest.TestCase):
         result = re.evaluate_with_llm("prompt", model_config)
 
         self.assertFalse(result['success'])
-        self.assertIn('API Key', result['error'])
+        self.assertIn('api key', result['error'].lower())
 
 
 class TestEvaluateSingleResult(unittest.TestCase):

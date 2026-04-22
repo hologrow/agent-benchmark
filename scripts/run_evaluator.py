@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-Benchmark 评估器脚本
-用于评估 benchmark run 的结果
+Benchmark evaluator — scores completed benchmark results with an LLM.
 
-用法:
-    uv run python run_evaluator.py <run_id>
+Usage:
+    uv run python run_evaluator.py <execution_id>
 """
 
 import subprocess
@@ -18,25 +17,21 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-# 数据库路径
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'benchmark.db')
 
 
 def log(msg: str):
-    """打印带时间戳的日志"""
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print(f"[{timestamp}] {msg}", flush=True)
 
 
 def get_db_connection():
-    """获取数据库连接"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def parse_template(template: str, context: Dict) -> str:
-    """解析模板，替换变量"""
     result = template
     for key, value in context.items():
         placeholder = f"{{{{{key}}}}}"
@@ -45,35 +40,29 @@ def parse_template(template: str, context: Dict) -> str:
 
 
 def evaluate_with_llm(prompt: str, model_config: Dict) -> Dict:
-    """使用 LLM 进行评估
-
-    Args:
-        prompt: 评估提示词
-        model_config: 模型配置，包含 model_id, provider, api_key, base_url, config 等
-    """
     provider = model_config.get('provider', 'openai')
     model_id = model_config.get('model_id')
     api_key = model_config.get('api_key')
     base_url = model_config.get('base_url')
     config = model_config.get('config', {})
 
-    log(f"[调试] 开始调用 LLM")
-    log(f"[调试] Provider: {provider}")
-    log(f"[调试] Model ID: {model_id}")
-    log(f"[调试] Base URL: {base_url}")
-    log(f"[调试] API Key: {'已配置' if api_key else '未配置'}")
-    log(f"[调试] Prompt 长度: {len(prompt)} 字符")
+    log("[dbg] calling LLM")
+    log(f"[dbg] provider: {provider}")
+    log(f"[dbg] model_id: {model_id}")
+    log(f"[dbg] base_url: {base_url}")
+    log(f"[dbg] api_key: {'set' if api_key else 'missing'}")
+    log(f"[dbg] prompt length: {len(prompt)} chars")
 
     if not api_key:
         return {
             'success': False,
-            'error': '未配置 API Key，请在模型配置中设置 API Key'
+            'error': 'API key is not configured for this model'
         }
 
     if not model_id:
         return {
             'success': False,
-            'error': '未配置 Model ID'
+            'error': 'Model ID is not configured'
         }
 
     try:
@@ -82,12 +71,12 @@ def evaluate_with_llm(prompt: str, model_config: Dict) -> Dict:
         else:
             return {
                 'success': False,
-                'error': f'不支持的 provider: {provider}'
+                'error': f'Unsupported provider: {provider}'
             }
     except Exception as e:
-        log(f"[错误] 评估异常: {str(e)}")
+        log(f"[err] evaluation failed: {str(e)}")
         import traceback
-        log(f"[错误] 堆栈: {traceback.format_exc()}")
+        log(f"[err] traceback: {traceback.format_exc()}")
         return {
             'success': False,
             'error': str(e)
@@ -95,51 +84,51 @@ def evaluate_with_llm(prompt: str, model_config: Dict) -> Dict:
 
 
 def evaluate_with_openai(prompt: str, model_id: str, api_key: str, base_url: Optional[str], config: Dict) -> Dict:
-    """使用 OpenAI 兼容接口进行评估"""
     try:
         from openai import OpenAI
     except ImportError:
         return {
             'success': False,
-            'error': '未安装 openai 包，请运行: pip install openai'
+            'error': 'openai package not installed; run: pip install openai'
         }
 
-    # 构建客户端配置
     client_config = {
         'api_key': api_key
     }
     if base_url:
         client_config['base_url'] = base_url
 
-    log(f"[调试] OpenAI 客户端配置: {client_config}")
+    log(f"[dbg] OpenAI client config: {client_config}")
 
     client = OpenAI(**client_config)
 
-    # 获取配置参数
     temperature = config.get('temperature', 0.7)
     max_tokens = config.get('max_tokens', 4096)
 
     try:
-        log(f"[调试] 发送请求到 OpenAI API...")
+        log("[dbg] sending request to OpenAI API...")
         response = client.chat.completions.create(
             model=model_id,
             messages=[
-                {"role": "system", "content": "你是一个专业的 AI Agent 评估专家。请根据给定的测试用例和评估标准，对 Agent 的输出进行客观、公正的评估。"},
+                {"role": "system", "content": (
+                    "You are an expert evaluator of AI agent outputs. "
+                    "Score and explain them objectively against the test criteria."
+                )},
                 {"role": "user", "content": prompt}
             ],
             temperature=temperature,
             max_tokens=max_tokens,
-            response_format={"type": "json_object"}  # 要求返回 JSON 格式
+            response_format={"type": "json_object"}
         )
 
-        log(f"[调试] API 响应成功")
+        log("[dbg] API response OK")
         content = response.choices[0].message.content
-        log(f"[调试] 响应内容长度: {len(content) if content else 0} 字符")
+        log(f"[dbg] response length: {len(content) if content else 0} chars")
 
         if not content:
             return {
                 'success': False,
-                'error': 'API 返回空内容'
+                'error': 'API returned empty content'
             }
 
         try:
@@ -149,8 +138,7 @@ def evaluate_with_openai(prompt: str, model_id: str, api_key: str, base_url: Opt
                 'evaluation': evaluation
             }
         except json.JSONDecodeError as e:
-            log(f"[警告] 无法解析 JSON 响应，将返回原始内容: {str(e)}")
-            # 如果无法解析 JSON，将整个输出作为报告
+            log(f"[warn] JSON parse failed, using raw content: {str(e)}")
             return {
                 'success': True,
                 'evaluation': {
@@ -162,16 +150,15 @@ def evaluate_with_openai(prompt: str, model_id: str, api_key: str, base_url: Opt
             }
 
     except Exception as e:
-        log(f"[错误] OpenAI API 调用失败: {str(e)}")
+        log(f"[err] OpenAI API call failed: {str(e)}")
         return {
             'success': False,
-            'error': f'OpenAI API 调用失败: {str(e)}'
+            'error': f'OpenAI API call failed: {str(e)}'
         }
 
 
 
 def evaluate_single_result(args: Dict) -> Dict:
-    """评估单个结果（用于多进程）"""
     result_id = args['result_id']
     evaluator_config = args['evaluator_config']
     model_config = args.get('model_config', {})
@@ -179,7 +166,6 @@ def evaluate_single_result(args: Dict) -> Dict:
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # 获取结果详情（包含 trace 信息）
     cursor.execute('''
         SELECT
             br.*,
@@ -203,24 +189,20 @@ def evaluate_single_result(args: Dict) -> Dict:
     if not result:
         return {'error': 'Result not found'}
 
-    # 构建评估上下文
     key_points = json.loads(result['key_points']) if result['key_points'] else []
     forbidden_points = json.loads(result['forbidden_points']) if result['forbidden_points'] else []
 
-    # 获取执行步骤和答案（新增字段，兼容旧数据）
     execution_steps = result['execution_steps'] if result['execution_steps'] else ''
     execution_answer = result['execution_answer'] if result['execution_answer'] else ''
-    # 如果没有解析后的字段，使用原始输出作为答案
     if not execution_answer and result['actual_output']:
         execution_answer = result['actual_output']
 
-    # 构建 trace 信息（直接从数据库读取）
     trace_content = result['trace_content'] if result['trace_content'] else ''
 
     if trace_content:
-        log(f"[调试] 从数据库读取 trace 内容成功，长度: {len(trace_content)} 字符")
+        log(f"[dbg] trace from DB, length: {len(trace_content)} chars")
     else:
-        log(f"[警告] 数据库中没有 trace 内容")
+        log("[warn] no trace content in DB")
 
     context = {
         'agent_name': result['agent_name'],
@@ -239,67 +221,64 @@ def evaluate_single_result(args: Dict) -> Dict:
         **evaluator_config.get('variables', {})
     }
 
-    # 解析评估 prompt
     evaluation_prompt_template = evaluator_config.get('evaluation_prompt', '''
-请评估以下 AI Agent 的回复质量。
+Evaluate the following AI agent response.
 
-## 测试用例信息
-- 测试 ID: {{test_id}}
-- 测试名称: {{test_case_name}}
-- 输入: {{input}}
-- 期望输出: {{expected_output}}
-- 如何实现: {{how}}
+## Test case
+- Test ID: {{test_id}}
+- Name: {{test_case_name}}
+- Input: {{input}}
+- Expected output: {{expected_output}}
+- How (implementation hint): {{how}}
 
-## 关键测试点
+## Key points
 {{key_points}}
 
-## 禁止点
+## Forbidden points
 {{forbidden_points}}
 
-## Agent 实际输出
+## Agent raw output
 {{actual_output}}
 
-## Agent 执行答案（解析后的最终答案，推荐优先使用）
+## Parsed final answer (prefer for correctness)
 {{execution_answer}}
 
-## Agent 执行过程（执行步骤和中间过程）
+## Execution steps
 {{execution_steps}}
 
-## Langfuse Trace 内容
+## Langfuse trace
 {{trace}}
-如果提供了 trace 内容，可以参考其中的详细执行过程、输入输出、模型调用等信息来更准确地评估 Agent 的行为。
+Use trace details (steps, I/O, model calls) when present to judge behavior.
 
-## 评估要求
-1. 检查实际输出或执行答案是否满足所有关键测试点
-2. 检查实际输出或执行答案是否触犯了任何禁止点
-3. 根据满足程度和违规情况打分（0-100）
-4. 生成详细的评估报告
+## Requirements
+1. Check whether output/answer satisfies all key points
+2. Check whether any forbidden points were violated
+3. Score 0–100 based on satisfaction and violations
+4. Write a clear evaluation report
 
-## 可用变量说明
-- {{actual_output}}: Agent 的原始完整输出
-- {{execution_answer}}: 解析后的最终答案（推荐用于评估内容正确性）
-- {{execution_steps}}: 执行步骤和工具调用过程（用于评估执行路径）
-- {{trace}}: 从 Langfuse 获取的完整 trace 内容，包含详细的执行步骤、输入输出、模型调用等信息（如果已同步）
+## Template variables
+- {{actual_output}}: raw agent output
+- {{execution_answer}}: parsed final answer
+- {{execution_steps}}: steps / tool calls
+- {{trace}}: Langfuse trace when synced
 
-请以 JSON 格式返回评估结果：
+Return JSON only:
 {
     "score": 85,
-    "report": "详细的评估报告...",
-    "key_points_met": ["满足的关键点1", "满足的关键点2"],
-    "forbidden_points_violated": ["违反的禁止点1"]
+    "report": "...",
+    "key_points_met": ["..."],
+    "forbidden_points_violated": ["..."]
 }
 ''')
 
     evaluation_prompt = parse_template(evaluation_prompt_template, context)
 
-    # 执行评估
-    log(f"评估结果 {result_id}，使用模型: {model_config.get('model_id', 'unknown')}...")
+    log(f"Evaluating result {result_id}, model: {model_config.get('model_id', 'unknown')}...")
     eval_result = evaluate_with_llm(evaluation_prompt, model_config)
 
     if not eval_result['success']:
         error_msg = eval_result.get('error', 'Unknown error')
-        log(f"评估失败: {error_msg}")
-        # 保存评估错误到 benchmark_results 表
+        log(f"Evaluation failed: {error_msg}")
         cursor.execute(
             'UPDATE benchmark_results SET evaluation_error = ? WHERE id = ?',
             (error_msg, result_id)
@@ -313,7 +292,6 @@ def evaluate_single_result(args: Dict) -> Dict:
 
     evaluation = eval_result['evaluation']
 
-    # 保存评估结果
     cursor.execute(
         '''INSERT INTO evaluations
            (execution_id, result_id, score, report, key_points_met, forbidden_points_violated, evaluated_at)
@@ -338,13 +316,11 @@ def evaluate_single_result(args: Dict) -> Dict:
 
 
 def run_evaluation(execution_id: int):
-    """执行评估"""
-    log(f"开始评估 Benchmark Execution {execution_id}")
+    log(f"Starting evaluation for execution {execution_id}")
 
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # 更新 evaluation_status 为 running
     cursor.execute(
         "UPDATE benchmark_executions SET evaluation_status = 'running' WHERE id = ?",
         (execution_id,)
@@ -352,7 +328,6 @@ def run_evaluation(execution_id: int):
     conn.commit()
 
     try:
-        # 获取 execution 详情
         cursor.execute('''
             SELECT be.*, b.evaluator_id
             FROM benchmark_executions be
@@ -362,7 +337,7 @@ def run_evaluation(execution_id: int):
         execution = cursor.fetchone()
 
         if not execution:
-            log(f"错误: 未找到 benchmark execution {execution_id}")
+            log(f"Error: benchmark execution {execution_id} not found")
             cursor.execute(
                 "UPDATE benchmark_executions SET evaluation_status = 'failed' WHERE id = ?",
                 (execution_id,)
@@ -371,7 +346,7 @@ def run_evaluation(execution_id: int):
             sys.exit(1)
 
         if not execution['evaluator_id']:
-            log("该 execution 没有配置评估器，跳过评估")
+            log("No evaluator on this execution; skipping evaluation")
             cursor.execute(
                 "UPDATE benchmark_executions SET evaluation_status = 'completed' WHERE id = ?",
                 (execution_id,)
@@ -379,12 +354,11 @@ def run_evaluation(execution_id: int):
             conn.commit()
             return
 
-        # 获取评估器配置
         cursor.execute('SELECT * FROM evaluators WHERE id = ?', (execution['evaluator_id'],))
         evaluator = cursor.fetchone()
 
         if not evaluator:
-            log(f"错误: 未找到评估器 {execution['evaluator_id']}")
+            log(f"Error: evaluator {execution['evaluator_id']} not found")
             cursor.execute(
                 "UPDATE benchmark_executions SET evaluation_status = 'failed' WHERE id = ?",
                 (execution_id,)
@@ -393,18 +367,17 @@ def run_evaluation(execution_id: int):
             sys.exit(1)
 
         evaluator_config = json.loads(evaluator['config'])
-        log(f"使用评估器: {evaluator['name']}")
-        log(f"[调试] 评估器配置: {evaluator_config}")
+        log(f"Evaluator: {evaluator['name']}")
+        log(f"[dbg] evaluator config: {evaluator_config}")
 
-        # 获取模型配置
         model_config = {}
         model_id = evaluator.get('model_id') if hasattr(evaluator, 'get') else evaluator['model_id']
-        log(f"[调试] 评估器 model_id: {model_id}")
+        log(f"[dbg] evaluator model_id: {model_id}")
 
         if model_id:
             cursor.execute('SELECT * FROM models WHERE id = ?', (model_id,))
             model_row = cursor.fetchone()
-            log(f"[调试] 查询模型结果: {model_row is not None}")
+            log(f"[dbg] model row found: {model_row is not None}")
             if model_row:
                 model_config = {
                     'id': model_row['id'],
@@ -415,16 +388,15 @@ def run_evaluation(execution_id: int):
                     'base_url': model_row['base_url'],
                     'config': json.loads(model_row['config']) if model_row['config'] else {}
                 }
-                log(f"使用配置的模型: {model_config['name']} (ID: {model_config['model_id']}, Provider: {model_config['provider']})")
+                log(f"Using model: {model_config['name']} (ID: {model_config['model_id']}, provider: {model_config['provider']})")
             else:
-                log(f"[警告] 未找到 model_id={model_id} 的模型")
+                log(f"[warn] no model row for model_id={model_id}")
         else:
-            log("[警告] 评估器未配置模型")
+            log("[warn] evaluator has no model_id")
 
-        # 如果没有配置模型，报错
         if not model_config:
-            error_msg = "评估器未配置模型，请先配置模型"
-            log(f"[错误] {error_msg}")
+            error_msg = "Evaluator has no model configured"
+            log(f"[err] {error_msg}")
             cursor.execute(
                 "UPDATE benchmark_executions SET evaluation_status = 'failed' WHERE id = ?",
                 (execution_id,)
@@ -432,7 +404,6 @@ def run_evaluation(execution_id: int):
             conn.commit()
             return
 
-        # 获取所有需要评估的结果
         cursor.execute('''
             SELECT br.id FROM benchmark_results br
             WHERE br.execution_id = ? AND br.status = 'completed'
@@ -444,7 +415,7 @@ def run_evaluation(execution_id: int):
         results_to_evaluate = [row['id'] for row in cursor.fetchall()]
 
         if not results_to_evaluate:
-            log("没有需要评估的结果")
+            log("No results to evaluate")
             cursor.execute(
                 "UPDATE benchmark_executions SET evaluation_status = 'completed' WHERE id = ?",
                 (execution_id,)
@@ -452,9 +423,8 @@ def run_evaluation(execution_id: int):
             conn.commit()
             return
 
-        log(f"需要评估的结果数: {len(results_to_evaluate)}")
+        log(f"Results to evaluate: {len(results_to_evaluate)}")
 
-        # 准备评估任务
         eval_tasks = [
             {
                 'result_id': result_id,
@@ -464,15 +434,12 @@ def run_evaluation(execution_id: int):
             for result_id in results_to_evaluate
         ]
 
-        # 获取并行度配置
         max_workers = evaluator_config.get('max_workers', 1)
 
-        # 执行评估
         completed_count = 0
         failed_count = 0
 
         if max_workers > 1:
-            # 并行执行
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
                 futures = {executor.submit(evaluate_single_result, task): task for task in eval_tasks}
                 for future in as_completed(futures):
@@ -481,16 +448,15 @@ def run_evaluation(execution_id: int):
                         completed_count += 1
                     else:
                         failed_count += 1
-                    log(f"评估进度: {completed_count + failed_count}/{len(eval_tasks)}")
+                    log(f"Eval progress: {completed_count + failed_count}/{len(eval_tasks)}")
         else:
-            # 串行执行
             for task in eval_tasks:
                 result = evaluate_single_result(task)
                 if result.get('status') == 'completed':
                     completed_count += 1
                 else:
                     failed_count += 1
-                log(f"评估进度: {completed_count + failed_count}/{len(eval_tasks)}")
+                log(f"Eval progress: {completed_count + failed_count}/{len(eval_tasks)}")
 
         # Update evaluation_status based on results
         if failed_count > 0:
@@ -504,12 +470,12 @@ def run_evaluation(execution_id: int):
         )
         conn.commit()
 
-        log("评估完成!")
-        log(f"总计: {len(eval_tasks)}, 成功: {completed_count}, 失败: {failed_count}")
-        log(f"评估状态: {final_status}")
+        log("Evaluation finished.")
+        log(f"Total: {len(eval_tasks)}, ok: {completed_count}, failed: {failed_count}")
+        log(f"evaluation_status: {final_status}")
 
     except Exception as e:
-        log(f"评估过程发生错误: {e}")
+        log(f"Evaluation error: {e}")
         cursor.execute(
             "UPDATE benchmark_executions SET evaluation_status = 'failed' WHERE id = ?",
             (execution_id,)
@@ -521,7 +487,7 @@ def run_evaluation(execution_id: int):
 def main():
     if len(sys.argv) < 2:
         log(__doc__)
-        log("\n用法:")
+        log("\nUsage:")
         log("    uv run python run_evaluator.py <execution_id>")
         sys.exit(1)
 

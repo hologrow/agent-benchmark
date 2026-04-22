@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncExecutionTraces, syncAllPendingTraces } from "@/lib/langfuse-sync";
+import { syncExecutionTraces, syncAllPendingTraces } from "@/lib/execution-trace/orchestrator";
 
-// POST /api/traces/sync - 同步 Langfuse Traces
+// POST /api/traces/sync - pull traces from enabled trace plugin into DB
 export async function POST(request: NextRequest) {
   try {
     const { executionId } = await request.json();
 
     let result;
     if (executionId) {
-      // 同步指定 execution 的 traces
+      // Sync one execution
       result = await syncExecutionTraces(executionId);
     } else {
-      // 同步所有待处理的 traces
+      // Sync all pending (batch not implemented)
       result = await syncAllPendingTraces();
     }
 

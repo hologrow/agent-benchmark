@@ -3,6 +3,7 @@ import { generateText } from "ai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import {
+  getDatabase,
   getModelById,
   getDefaultModel,
   getDiagnosisResultByResultId,
@@ -23,11 +24,7 @@ interface ResultDetails extends Result {
   trace_content: string | null;
 }
 
-/**
- * 获取测试结果详情（包含关联信息）
- */
 function getResultDetails(resultId: number): ResultDetails | null {
-  const { getDatabase } = require("@/lib/db");
   const db = getDatabase();
 
   const result = db
@@ -56,66 +53,60 @@ function getResultDetails(resultId: number): ResultDetails | null {
   return result as ResultDetails;
 }
 
-/**
- * 构建诊断提示词
- */
 function buildDiagnosisPrompt(result: ResultDetails): string {
-  return `请对以下测试用例执行情况进行深入诊断分析，仔细核对每一个执行步骤，发现异常出现在哪里。
+  return `Diagnose this benchmark run in depth. Walk through each step and pinpoint where things went wrong.
 
-## 测试用例信息
+## Case
 - Agent: ${result.agent_name}
-- 执行状态: ${result.status}
+- Status: ${result.status}
 
-## 输入
+## Input
 ${result.test_input}
 
-## 期望输出
+## Expected output
 ${result.expected_output}
 
-## 关键测试点
-${result.key_points || "无"}
+## Key points
+${result.key_points || "(none)"}
 
-## 禁止点
-${result.forbidden_points || "无"}
+## Forbidden points
+${result.forbidden_points || "(none)"}
 
-## 实际输出
-${result.actual_output || "无输出"}
+## Actual output
+${result.actual_output || "(none)"}
 
-## 执行答案（解析后）
-${result.execution_answer || "无"}
+## Parsed answer
+${result.execution_answer || "(none)"}
 
-## 执行步骤
-${result.execution_steps || "无"}
+## Execution steps
+${result.execution_steps || "(none)"}
 
-## 错误信息
-${result.error_message || "无"}
+## Error message
+${result.error_message || "(none)"}
 
-## Langfuse Trace
-${result.trace_content || "无 Trace 数据"}
+## External trace (e.g. Langfuse)
+${result.trace_content || "(no trace)"}
 
 ---
 
-请提供详细的诊断报告，包含以下内容：
+Produce a Markdown report with:
 
-### 1. 问题定位
-- 失败类型（如：理解错误、逻辑错误、工具调用失败、超时等）
-- 具体在哪个环节出现问题
+### 1. Where it failed
+- Failure category (understanding, logic, tool error, timeout, …)
+- Which phase broke
 
-### 2. 根因分析
-- 从 Trace 中发现的异常或问题
-- Agent 行为的异常模式
-- 可能的配置或环境问题
+### 2. Root cause
+- Evidence from the trace
+- Suspicious agent behavior patterns
+- Config or environment suspects
 
-### 3. 修复建议
-- 如何修复此问题
-- 对 Agent 或测试用例的改进建议
+### 3. Fix recommendations
+- Concrete remediation
+- Suggestions for the agent or the test case
 
-请使用 Markdown 格式输出诊断报告。`;
+Use Markdown headings and bullet lists.`;
 }
 
-/**
- * 根据模型配置创建 AI SDK provider
- */
 function createModelProvider(model: Model) {
   const provider = model.provider;
   const modelId = model.model_id;
@@ -127,7 +118,6 @@ function createModelProvider(model: Model) {
     return anthropic(modelId);
   }
 
-  // OpenAI 和 OpenRouter 使用 openai provider
   const openai = createOpenAI({
     apiKey: model.api_key || undefined,
     baseURL: model.base_url || undefined,
@@ -135,7 +125,7 @@ function createModelProvider(model: Model) {
   return openai(modelId);
 }
 
-// POST /api/results/:id/diagnose - 执行诊断
+// POST /api/results/:id/diagnose — run LLM diagnosis
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -144,21 +134,18 @@ export async function POST(
     const { id } = await params;
     const resultId = parseInt(id);
 
-    // 获取请求体中的可选 model_id
     const body = await request.json().catch(() => ({}));
     const modelId = body.model_id;
 
-    // 获取测试结果详情
     const result = getResultDetails(resultId);
     if (!result) {
       return NextResponse.json({ error: "Result not found" }, { status: 404 });
     }
 
     console.log(
-      `[Diagnosis] 开始诊断 result_id=${resultId}, test=${result.test_id}`,
+      `[Diagnosis] start result_id=${resultId} test=${result.test_id}`,
     );
 
-    // 获取模型配置
     let model: Model | undefined;
     if (modelId) {
       model = getModelById(modelId);
@@ -181,22 +168,20 @@ export async function POST(
       );
     }
 
-    console.log(`[Diagnosis] 使用模型: ${model.name} (${model.model_id})`);
+    console.log(`[Diagnosis] model ${model.name} (${model.model_id})`);
 
-    // 构建诊断提示词
     const prompt = buildDiagnosisPrompt(result);
 
-    // 调用 AI SDK 进行诊断
     const modelProvider = createModelProvider(model);
 
-    console.log(`[Diagnosis] 调用 LLM 分析中...`);
+    console.log(`[Diagnosis] calling LLM...`);
     const { text } = await generateText({
       model: modelProvider,
       messages: [
         {
           role: "system",
           content:
-            "你是一位专业的 AI Agent 测试分析专家。你的任务是分析测试用例执行失败的原因，找出期望输出和实际输出之间的差异，并提供详细的诊断报告。",
+            "You are an expert in AI agent benchmarking. Explain why the run diverged from expectations, compare expected vs actual output, and return a structured diagnosis in Markdown.",
         },
         {
           role: "user",
@@ -206,12 +191,10 @@ export async function POST(
       temperature: 0.3,
     });
 
-    console.log(`[Diagnosis] 诊断完成，报告长度: ${text.length} 字符`);
+    console.log(`[Diagnosis] done, report length ${text.length}`);
 
-    // 删除旧的诊断结果
     deleteDiagnosisResultByResultId(resultId);
 
-    // 保存新的诊断结果
     const diagnosisResult = createDiagnosisResult({
       result_id: resultId,
       diagnosis_report: text,
@@ -226,7 +209,7 @@ export async function POST(
       created_at: diagnosisResult.created_at,
     });
   } catch (error) {
-    console.error("[Diagnosis] 诊断失败:", error);
+    console.error("[Diagnosis] failed:", error);
     return NextResponse.json(
       { error: "Diagnosis failed", details: String(error) },
       { status: 500 },
@@ -234,7 +217,7 @@ export async function POST(
   }
 }
 
-// GET /api/results/:id/diagnose - 获取诊断结果
+// GET /api/results/:id/diagnose — fetch saved diagnosis
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -252,7 +235,6 @@ export async function GET(
       );
     }
 
-    // 获取模型信息
     const model = diagnosis.model_id ? getModelById(diagnosis.model_id) : null;
 
     return NextResponse.json({

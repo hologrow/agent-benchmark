@@ -5,7 +5,7 @@ import {
   deleteModel,
 } from '@/lib/db';
 
-// GET /api/models/:id - 获取单个模型
+// GET /api/models/:id - one model
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -31,7 +31,7 @@ export async function GET(
   }
 }
 
-// PUT /api/models/:id - 更新模型
+// PUT /api/models/:id - update model
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -69,7 +69,7 @@ export async function PUT(
   }
 }
 
-// DELETE /api/models/:id - 删除模型
+// DELETE /api/models/:id - delete model
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

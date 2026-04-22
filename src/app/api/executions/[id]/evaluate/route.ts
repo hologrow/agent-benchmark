@@ -2,12 +2,11 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { spawn } from 'child_process';
 import { getExecutionById, updateExecution, getPendingTraceSyncResults, getIntegrationByType } from '@/lib/db';
-import { syncExecutionTraces } from '@/lib/langfuse-sync';
+import { syncExecutionTraces } from '@/lib/execution-trace/orchestrator';
 import { join } from 'path';
 
 /**
- * 强制同步 traces，带重试机制
- * 返回是否所有 traces 都同步成功
+ * Sync traces with retries; returns whether all pending rows were cleared.
  */
 async function forceSyncTraces(executionId: number, maxRetries = 3): Promise<{
   success: boolean;
@@ -17,28 +16,24 @@ async function forceSyncTraces(executionId: number, maxRetries = 3): Promise<{
   let lastSyncResult = { success: 0, failed: 0 };
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    console.log(`[Evaluate] Execution ${executionId}: Trace 同步尝试 ${attempt}/${maxRetries}...`);
+    console.log(`[Evaluate] Execution ${executionId}: trace sync attempt ${attempt}/${maxRetries}...`);
 
-    // 执行同步
     lastSyncResult = await syncExecutionTraces(executionId);
 
-    // 检查是否还有未同步的
     const pending = getPendingTraceSyncResults(executionId);
 
     if (pending.length === 0) {
-      console.log(`[Evaluate] Execution ${executionId}: 所有 traces 同步成功`);
+      console.log(`[Evaluate] Execution ${executionId}: all traces synced`);
       return { success: true, syncResult: lastSyncResult, pendingCount: 0 };
     }
 
-    console.log(`[Evaluate] Execution ${executionId}: 仍有 ${pending.length} 个未同步，准备重试...`);
+    console.log(`[Evaluate] Execution ${executionId}: ${pending.length} still pending, retrying...`);
 
-    // 等待一段时间再重试
     if (attempt < maxRetries) {
       await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
     }
   }
 
-  // 重试耗尽，返回失败状态
   const finalPending = getPendingTraceSyncResults(executionId);
   return {
     success: false,
@@ -47,7 +42,7 @@ async function forceSyncTraces(executionId: number, maxRetries = 3): Promise<{
   };
 }
 
-// POST /api/executions/:id/evaluate - 启动评估任务
+// POST /api/executions/:id/evaluate - start evaluator subprocess
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -71,44 +66,39 @@ export async function POST(
       );
     }
 
-    // 检查是否配置了 Langfuse
     const langfuseIntegration = getIntegrationByType('langfuse');
     const isLangfuseEnabled = langfuseIntegration && langfuseIntegration.enabled === 1;
 
     let syncResult = { success: 0, failed: 0 };
 
-    // 如果配置了 Langfuse，强制同步 traces（必须在评估前完成）
     if (isLangfuseEnabled) {
-      console.log(`[Evaluate] Execution ${executionId}: Langfuse 已启用，开始强制同步 traces...`);
+      console.log(`[Evaluate] Execution ${executionId}: Langfuse enabled; forcing trace sync before evaluation...`);
       const syncStatus = await forceSyncTraces(executionId, 3);
       syncResult = syncStatus.syncResult;
 
       if (!syncStatus.success) {
-        console.error(`[Evaluate] Execution ${executionId}: Trace 同步失败，阻止评估执行`);
+        console.error(`[Evaluate] Execution ${executionId}: trace sync incomplete; blocking evaluation`);
         return NextResponse.json(
           {
-            error: 'Trace 同步失败，请检查 Langfuse 配置或稍后重试',
+            error: 'Trace sync failed or incomplete. Check Langfuse integration and retry.',
             trace_sync: syncResult,
             pending_count: syncStatus.pendingCount,
-            message: '执行评估前必须完成 Trace 同步，请确保 Langfuse 服务可用后重试'
+            message: 'All traces must sync before evaluation. Ensure the trace provider is reachable.'
           },
           { status: 400 }
         );
       }
 
-      console.log(`[Evaluate] Execution ${executionId}: Trace 同步成功，继续执行评估`);
+      console.log(`[Evaluate] Execution ${executionId}: trace sync OK; starting evaluation`);
     } else {
-      console.log(`[Evaluate] Execution ${executionId}: Langfuse 未启用，跳过 trace 同步`);
+      console.log(`[Evaluate] Execution ${executionId}: Langfuse not enabled; skipping trace sync`);
     }
 
-    // Update evaluation status to running
     updateExecution(executionId, { evaluation_status: 'running' });
 
-    // Spawn the evaluator script and capture output
     const scriptPath = join(process.cwd(), 'scripts', 'run_evaluator.py');
     const logFile = join(process.cwd(), 'data', `eval_${executionId}.log`);
 
-    // 使用日志文件记录输出
     const fs = await import('fs');
     const logStream = fs.createWriteStream(logFile, { flags: 'w' });
 
@@ -117,7 +107,6 @@ export async function POST(
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
-    // 实时记录输出到日志文件和控制台
     evaluatorProcess.stdout?.on('data', (data) => {
       const output = data.toString();
       logStream.write(`[STDOUT] ${output}`);

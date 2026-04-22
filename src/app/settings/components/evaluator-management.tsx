@@ -48,30 +48,23 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
+import { api } from "@/lib/api";
+import { formatDateTimeLocal } from "@/lib/format-datetime";
+import type { Model, Evaluator } from "@/types/api";
 
-interface Model {
-  id: number;
-  name: string;
-  model_id: string;
-  provider: string;
-}
-
-interface Evaluator {
-  id: number;
-  name: string;
-  description: string;
+// Extend Evaluator with local properties
+interface LocalEvaluator extends Evaluator {
   script_path: string;
   config: string;
-  model_id: number | null;
-  created_at: string;
 }
 
 const formSchema = z.object({
-  name: z.string().min(1, "名称不能为空"),
+  name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
-  script_path: z.string().min(1, "脚本路径不能为空"),
+  script_path: z.string().min(1, "Script path is required"),
   model_id: z.number().optional(),
-  config: z.string().min(1, "配置不能为空"),
+  prompt_template: z.string().min(1, "Prompt template is required"),
+  config: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -81,57 +74,57 @@ const defaultConfig = {
   max_workers: 1,
   variables: {
     evaluation_criteria: "accuracy,completeness,clarity",
-    scoring_guide: "0-100分，根据满足关键测试点和违反禁止点的情况打分",
+    scoring_guide: "0-100 points, score based on meeting key test points and violating forbidden points",
   },
-  evaluation_prompt: `请评估以下 AI Agent 的回复质量。
+  evaluation_prompt: `Please evaluate the quality of the AI Agent's response.
 
-## 测试用例信息
-- 测试 ID: {{test_id}}
-- 测试名称: {{test_case_name}}
-- 输入: {{input}}
-- 期望输出: {{expected_output}}
-- 如何实现: {{how}}
+## Test Case Information
+- Test ID: {{test_id}}
+- Test Name: {{test_case_name}}
+- Input: {{input}}
+- Expected Output: {{expected_output}}
+- How: {{how}}
 
-## 关键测试点
+## Key Test Points
 {{key_points}}
 
-## 禁止点
+## Forbidden Points
 {{forbidden_points}}
 
-## Agent 实际输出
+## Agent Actual Output
 {{actual_output}}
 
-## Agent 执行答案（解析后的最终答案）
+## Agent Execution Answer (Parsed Final Answer)
 {{execution_answer}}
 
-## Agent 执行过程（执行步骤和中间过程）
+## Agent Execution Process (Steps and Intermediate Output)
 {{execution_steps}}
 
-## 评估要求
-1. 检查实际输出或执行答案是否满足所有关键测试点
-2. 检查实际输出或执行答案是否触犯了任何禁止点
-3. 根据满足程度和违规情况打分（0-100）
-4. 生成详细的评估报告
+## Evaluation Requirements
+1. Check if actual output or execution answer meets all key test points
+2. Check if actual output or execution answer violates any forbidden points
+3. Score based on satisfaction level and violations (0-100)
+4. Generate detailed evaluation report
 
-请以 JSON 格式返回评估结果：
+Please return evaluation results in JSON format:
 {
     "score": 85,
-    "report": "详细的评估报告...",
-    "key_points_met": ["满足的关键点1", "满足的关键点2"],
-    "forbidden_points_violated": ["违反的禁止点1"]
+    "report": "Detailed evaluation report...",
+    "key_points_met": ["Key point met 1", "Key point met 2"],
+    "forbidden_points_violated": ["Forbidden point violated 1"]
 }`,
 };
 
 export function EvaluatorManagement() {
-  const [evaluators, setEvaluators] = useState<Evaluator[]>([]);
+  const [evaluators, setEvaluators] = useState<LocalEvaluator[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingEvaluator, setEditingEvaluator] = useState<Evaluator | null>(
+  const [editingEvaluator, setEditingEvaluator] = useState<LocalEvaluator | null>(
     null,
   );
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletingEvaluator, setDeletingEvaluator] = useState<Evaluator | null>(
+  const [deletingEvaluator, setDeletingEvaluator] = useState<LocalEvaluator | null>(
     null,
   );
 
@@ -142,7 +135,8 @@ export function EvaluatorManagement() {
       description: "",
       script_path: "scripts/run_evaluator.py",
       model_id: undefined,
-      config: JSON.stringify(defaultConfig, null, 2),
+      prompt_template: defaultConfig.evaluation_prompt,
+      config: JSON.stringify({ ...defaultConfig, evaluation_prompt: undefined }, null, 2),
     },
   });
 
@@ -153,12 +147,11 @@ export function EvaluatorManagement() {
 
   const fetchEvaluators = async () => {
     try {
-      const response = await fetch("/api/evaluators");
-      const data = await response.json();
-      setEvaluators(data.evaluators || []);
+      const data = await api.evaluators.list();
+      setEvaluators(data.evaluators as LocalEvaluator[] || []);
     } catch (error) {
       console.error("Error fetching evaluators:", error);
-      toast.error("获取评估器失败");
+      toast.error("Failed to fetch evaluators");
     } finally {
       setLoading(false);
     }
@@ -166,8 +159,7 @@ export function EvaluatorManagement() {
 
   const fetchModels = async () => {
     try {
-      const response = await fetch("/api/models");
-      const data = await response.json();
+      const data = await api.models.list();
       setModels(data.models || []);
     } catch (error) {
       console.error("Error fetching models:", error);
@@ -176,49 +168,69 @@ export function EvaluatorManagement() {
 
   const onSubmit = async (values: FormData) => {
     try {
-      // 验证 JSON 格式
-      try {
-        JSON.parse(values.config);
-      } catch {
-        toast.error("配置必须是有效的 JSON 格式");
-        return;
+      // Validate JSON format for config
+      let parsedConfig = {};
+      if (values.config) {
+        try {
+          parsedConfig = JSON.parse(values.config);
+        } catch {
+          toast.error("Configuration must be valid JSON format");
+          return;
+        }
       }
 
-      const url = editingEvaluator
-        ? `/api/evaluators/${editingEvaluator.id}`
-        : "/api/evaluators";
-      const method = editingEvaluator ? "PUT" : "POST";
+      const payload = {
+        name: values.name,
+        description: values.description,
+        script_path: values.script_path,
+        model_id: values.model_id!,
+        prompt_template: values.prompt_template,
+        config: parsedConfig,
+      };
 
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
-      });
-
-      if (response.ok) {
-        toast.success(editingEvaluator ? "评估器已更新" : "评估器已创建");
-        setDialogOpen(false);
-        form.reset();
-        setEditingEvaluator(null);
-        fetchEvaluators();
+      if (editingEvaluator) {
+        await api.evaluators.update(editingEvaluator.id, payload);
       } else {
-        const error = await response.json();
-        toast.error(error.error || "操作失败");
+        await api.evaluators.create(payload);
       }
+
+      toast.success(editingEvaluator ? "Evaluator updated" : "Evaluator created");
+      setDialogOpen(false);
+      form.reset();
+      setEditingEvaluator(null);
+      fetchEvaluators();
     } catch (error) {
       console.error("Error saving evaluator:", error);
-      toast.error("保存失败");
+      const message = error instanceof Error ? error.message : "Save failed";
+      toast.error(message);
     }
   };
 
-  const handleEdit = (evaluator: Evaluator) => {
+  const handleEdit = (evaluator: LocalEvaluator) => {
     setEditingEvaluator(evaluator);
+
+    // Parse config to extract prompt_template if available
+    let parsedConfig: Record<string, unknown> = {};
+    let promptTemplate = defaultConfig.evaluation_prompt;
+    try {
+      parsedConfig = JSON.parse(evaluator.config || '{}') as Record<string, unknown>;
+      if (parsedConfig.evaluation_prompt && typeof parsedConfig.evaluation_prompt === 'string') {
+        promptTemplate = parsedConfig.evaluation_prompt;
+        const rest = { ...parsedConfig };
+        delete rest.evaluation_prompt;
+        parsedConfig = rest;
+      }
+    } catch {
+      // Use defaults
+    }
+
     form.reset({
       name: evaluator.name,
       description: evaluator.description,
       script_path: evaluator.script_path,
       model_id: evaluator.model_id ?? undefined,
-      config: evaluator.config,
+      prompt_template: promptTemplate,
+      config: JSON.stringify(parsedConfig, null, 2),
     });
     setDialogOpen(true);
   };
@@ -227,21 +239,15 @@ export function EvaluatorManagement() {
     if (!deletingEvaluator) return;
 
     try {
-      const response = await fetch(`/api/evaluators/${deletingEvaluator.id}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        toast.success("评估器已删除");
-        setDeleteDialogOpen(false);
-        setDeletingEvaluator(null);
-        fetchEvaluators();
-      } else {
-        toast.error("删除失败");
-      }
+      await api.evaluators.delete(deletingEvaluator.id);
+      toast.success("Evaluator deleted");
+      setDeleteDialogOpen(false);
+      setDeletingEvaluator(null);
+      fetchEvaluators();
     } catch (error) {
       console.error("Error deleting evaluator:", error);
-      toast.error("删除失败");
+      const message = error instanceof Error ? error.message : "Delete failed";
+      toast.error(message);
     }
   };
 
@@ -252,34 +258,31 @@ export function EvaluatorManagement() {
       description: "",
       script_path: "scripts/run_evaluator.py",
       model_id: undefined,
-      config: JSON.stringify(defaultConfig, null, 2),
+      prompt_template: defaultConfig.evaluation_prompt,
+      config: JSON.stringify({ ...defaultConfig, evaluation_prompt: undefined }, null, 2),
     });
     setDialogOpen(true);
-  };
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString("zh-CN");
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">评估器管理</h2>
+          <h2 className="text-2xl font-bold">Evaluator Management</h2>
           <p className="text-muted-foreground mt-1">
-            配置 Benchmark 结果评估器，支持变量引用上下文
+            Configure Benchmark result evaluators with variable context support
           </p>
         </div>
         <Button onClick={openCreateDialog}>
           <Plus className="h-4 w-4 mr-2" />
-          新建评估器
+          New Evaluator
         </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>评估器列表</CardTitle>
-          <CardDescription>共 {evaluators.length} 个评估器</CardDescription>
+          <CardTitle>Evaluator List</CardTitle>
+          <CardDescription>{evaluators.length} evaluators</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -289,24 +292,24 @@ export function EvaluatorManagement() {
           ) : evaluators.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Settings className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>暂无评估器</p>
+              <p>No evaluators</p>
               <Button
                 variant="outline"
                 className="mt-4"
                 onClick={openCreateDialog}
               >
-                创建第一个评估器
+                Create first evaluator
               </Button>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>描述</TableHead>
-                  <TableHead>脚本路径</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Script Path</TableHead>
+                  <TableHead>Created At</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -321,7 +324,7 @@ export function EvaluatorManagement() {
                     <TableCell className="font-mono text-sm">
                       {evaluator.script_path}
                     </TableCell>
-                    <TableCell>{formatDate(evaluator.created_at)}</TableCell>
+                    <TableCell>{formatDateTimeLocal(evaluator.created_at)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button
@@ -355,10 +358,10 @@ export function EvaluatorManagement() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingEvaluator ? "编辑评估器" : "新建评估器"}
+              {editingEvaluator ? "Edit Evaluator" : "New Evaluator"}
             </DialogTitle>
             <DialogDescription>
-              配置评估器参数，支持使用变量引用上下文进行动态评估
+              Configure evaluator parameters with variable context for dynamic evaluation
             </DialogDescription>
           </DialogHeader>
 
@@ -369,9 +372,9 @@ export function EvaluatorManagement() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>评估器名称</FormLabel>
+                    <FormLabel>Evaluator Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="如：默认评估器" {...field} />
+                      <Input placeholder="e.g., Default Evaluator" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -383,9 +386,9 @@ export function EvaluatorManagement() {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>描述</FormLabel>
+                    <FormLabel>Description</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="评估器描述" {...field} />
+                      <Textarea placeholder="Evaluator description" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -397,10 +400,10 @@ export function EvaluatorManagement() {
                 name="script_path"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>脚本路径</FormLabel>
+                    <FormLabel>Script Path</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="如：scripts/run_evaluator.py"
+                        placeholder="e.g.: scripts/run_evaluator.py"
                         {...field}
                       />
                     </FormControl>
@@ -414,7 +417,7 @@ export function EvaluatorManagement() {
                 name="model_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>选择模型</FormLabel>
+                    <FormLabel>Select Model</FormLabel>
                     <Select
                       onValueChange={(value) =>
                         field.onChange(value ? parseInt(value) : undefined)
@@ -423,10 +426,10 @@ export function EvaluatorManagement() {
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="选择用于评估的 LLM 模型">
+                          <SelectValue placeholder="Select LLM model for evaluation">
                             {field.value
                               ? models.find((m) => m.id === field.value)?.name
-                              : "选择用于评估的 LLM 模型"}
+                              : "Select LLM model for evaluation"}
                           </SelectValue>
                         </SelectTrigger>
                       </FormControl>
@@ -442,8 +445,8 @@ export function EvaluatorManagement() {
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      选择模型管理中配置的模型，评估时将使用该模型的 API
-                      密钥和配置
+                      Select a model from model management. The API key and
+                      configuration of this model will be used for evaluation
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -455,30 +458,30 @@ export function EvaluatorManagement() {
                 name="config"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>配置 (JSON)</FormLabel>
+                    <FormLabel>Configuration (JSON)</FormLabel>
                     <FormDescription className="mb-2">
                       <div className="space-y-2">
-                        <p>此配置用于自定义评估流程，包括：</p>
+                        <p>This configuration is used to customize the evaluation process, including:</p>
                         <ul className="list-disc pl-4 space-y-1 text-sm">
                           <li>
-                            <strong>model</strong>：评估使用的 LLM 模型（如
+                            <strong>model</strong>: LLM model for evaluation (e.g.,
                             claude-opus-4-6, claude-sonnet-4-6,
-                            claude-haiku-4-5-20251001）
+                            claude-haiku-4-5-20251001)
                           </li>
                           <li>
-                            <strong>max_workers</strong>：并行评估的进程数
+                            <strong>max_workers</strong>: Number of parallel evaluation processes
                           </li>
                           <li>
-                            <strong>variables</strong>：自定义变量，可在
-                            evaluation_prompt 中使用
+                            <strong>variables</strong>: Custom variables that can be used in
+                            evaluation_prompt
                           </li>
                           <li>
-                            <strong>evaluation_prompt</strong>：发送给 LLM
-                            的评估提示词，支持变量替换
+                            <strong>evaluation_prompt</strong>: Evaluation prompt sent to LLM,
+                            supports variable substitution
                           </li>
                         </ul>
                         <p className="text-xs text-muted-foreground">
-                          可用变量：agent_name, test_id, test_case_name, input,
+                          Available variables: agent_name, test_id, test_case_name, input,
                           expected_output, actual_output, execution_answer,
                           execution_steps, key_points, forbidden_points, how,
                           execution_time_ms, trace
@@ -487,7 +490,7 @@ export function EvaluatorManagement() {
                     </FormDescription>
                     <FormControl>
                       <Textarea
-                        placeholder="评估器配置 JSON"
+                        placeholder="Evaluator configuration JSON"
                         className="min-h-[400px] font-mono text-sm"
                         {...field}
                       />
@@ -499,7 +502,7 @@ export function EvaluatorManagement() {
 
               <DialogFooter>
                 <Button type="submit">
-                  {editingEvaluator ? "保存" : "创建"}
+                  {editingEvaluator ? "Save" : "Create"}
                 </Button>
               </DialogFooter>
             </form>
@@ -510,9 +513,9 @@ export function EvaluatorManagement() {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认删除</DialogTitle>
+            <DialogTitle>Confirm Delete</DialogTitle>
             <DialogDescription>
-              确定要删除评估器 "{deletingEvaluator?.name}" 吗？此操作不可撤销。
+              Are you sure you want to delete evaluator &quot;{deletingEvaluator?.name}&quot;? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -520,10 +523,10 @@ export function EvaluatorManagement() {
               variant="outline"
               onClick={() => setDeleteDialogOpen(false)}
             >
-              取消
+              Cancel
             </Button>
             <Button variant="destructive" onClick={handleDelete}>
-              删除
+              Delete
             </Button>
           </DialogFooter>
         </DialogContent>

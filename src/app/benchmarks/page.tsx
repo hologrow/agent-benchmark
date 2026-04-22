@@ -59,22 +59,14 @@ import * as z from "zod";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { JsonEditor, parseFlexibleJson } from "@/components/json-editor";
-
-interface Agent {
-  id: number;
-  name: string;
-}
+import { api } from "@/lib/api";
+import type { Agent, Evaluator, Benchmark as ApiBenchmark } from "@/types/api";
 
 interface TestSet {
   id: number;
   name: string;
   description: string;
   test_case_count?: number;
-}
-
-interface Evaluator {
-  id: number;
-  name: string;
 }
 
 interface ExecutionStats {
@@ -86,30 +78,21 @@ interface ExecutionStats {
   avgScore: number | null;
 }
 
-interface Benchmark {
-  id: number;
-  name: string;
-  description: string;
-  agent_ids: string;
-  test_set_id: number | null;
-  test_case_ids: string;
-  evaluator_id: number | null;
-  run_config: string;
-  created_at: string;
-  updated_at: string;
-  latestStats: ExecutionStats | null;
+// Extended benchmark type with UI-specific fields
+interface Benchmark extends ApiBenchmark {
+  latestStats?: ExecutionStats | null;
 }
 
 const formSchema = z.object({
-  name: z.string().min(1, "名称不能为空"),
+  name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
-  agent_ids: z.array(z.number()).min(1, "至少选择一个 Agent"),
-  test_set_id: z.number().min(1, "请选择测试集"),
-  evaluator_id: z.number().min(1, "请选择评估器"),
-  run_config: z.string().optional(), // 存储为字符串用于显示
+  agent_ids: z.array(z.number()).min(1, "Select at least one Agent"),
+  test_set_id: z.number().min(1, "Please select a test set"),
+  evaluator_id: z.number().min(1, "Please select an evaluator"),
+  run_config: z.string().optional(), // Stored as string for display
 });
 
-// 运行配置对象类型
+// Run config object type
 interface RunConfig {
   prompt_template?: string;
   use_session?: boolean;
@@ -125,8 +108,8 @@ const defaultRunConfig = {
   use_session: false,
   max_workers: 1,
   variables: {
-    format_requirement: "请提供清晰、结构化的回答",
-    language: "中文",
+    format_requirement: "Please provide clear, structured responses",
+    language: "English",
   },
 };
 
@@ -166,24 +149,18 @@ export default function BenchmarksPage() {
 
   const fetchData = async () => {
     try {
-      const [benchmarksRes, agentsRes, testSetsRes, evaluatorsRes] =
+      const [benchmarksData, agentsData, testSetsData, evaluatorsData] =
         await Promise.all([
-          fetch("/api/benchmarks"),
-          fetch("/api/agents"),
-          fetch("/api/test-sets"),
-          fetch("/api/evaluators"),
+          api.benchmarks.list(),
+          api.agents.list(),
+          api.testSets.list(),
+          api.evaluators.list(),
         ]);
 
-      const benchmarksData = await benchmarksRes.json();
-      const agentsData = await agentsRes.json();
-      const testSetsData = await testSetsRes.json();
-      const evaluatorsData = await evaluatorsRes.json();
-
-      // 为测试集计算用例数量
+      // Calculate test case count for test sets
       const testSetsWithCount = await Promise.all(
         (testSetsData.testSets || []).map(async (ts: TestSet) => {
-          const detailRes = await fetch(`/api/test-sets?id=${ts.id}`);
-          const detailData = await detailRes.json();
+          const detailData = await api.testSets.get(ts.id);
           return {
             ...ts,
             test_case_count: detailData.testSet?.test_cases?.length || 0,
@@ -191,13 +168,13 @@ export default function BenchmarksPage() {
         }),
       );
 
-      setBenchmarks(benchmarksData.benchmarks || []);
+      setBenchmarks((benchmarksData.benchmarks || []) as Benchmark[]);
       setAgents(agentsData.agents || []);
       setTestSets(testSetsWithCount);
       setEvaluators(evaluatorsData.evaluators || []);
     } catch (error) {
       console.error("Error fetching data:", error);
-      toast.error("获取数据失败");
+      toast.error("Failed to fetch data");
     } finally {
       setLoading(false);
     }
@@ -205,77 +182,62 @@ export default function BenchmarksPage() {
 
   const onSubmit = async (values: FormData) => {
     try {
-      // 解析运行配置
+      // Parse run configuration
       let runConfigObj: RunConfig = {};
       if (values.run_config) {
         const result = parseFlexibleJson(values.run_config);
         if (!result.success) {
-          toast.error("运行配置格式错误: " + result.error);
+          toast.error("Invalid run config format: " + result.error);
           return;
         }
         runConfigObj = (result.value as RunConfig) || {};
       }
 
       const isEditing = editingBenchmark !== null;
-      const url = isEditing
-        ? `/api/benchmarks/${editingBenchmark.id}`
-        : "/api/benchmarks";
-      const method = isEditing ? "PUT" : "POST";
+      const payload = {
+        ...values,
+        run_config: runConfigObj,
+      };
 
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...values,
-          run_config: runConfigObj, // 发送对象，让后端 JSON.stringify
-        }),
-      });
-
-      if (response.ok) {
-        toast.success(isEditing ? "Benchmark 已更新" : "Benchmark 已创建");
-        setDialogOpen(false);
-        setEditingBenchmark(null);
-        form.reset();
-        setSelectedAgents([]);
-        fetchData();
+      if (isEditing) {
+        await api.benchmarks.update(editingBenchmark.id, payload);
       } else {
-        const error = await response.json();
-        toast.error(error.error || (isEditing ? "更新失败" : "创建失败"));
+        await api.benchmarks.create(payload);
       }
+
+      toast.success(isEditing ? "Benchmark updated" : "Benchmark created");
+      setDialogOpen(false);
+      setEditingBenchmark(null);
+      form.reset();
+      setSelectedAgents([]);
+      fetchData();
     } catch (error) {
       console.error("Error saving benchmark:", error);
-      toast.error(editingBenchmark ? "更新失败" : "创建失败");
+      const message = error instanceof Error ? error.message : (editingBenchmark ? "Update failed" : "Create failed");
+      toast.error(message);
     }
   };
 
   const startBenchmark = async (benchmarkId: number) => {
     try {
-      const response = await fetch(`/api/benchmarks/${benchmarkId}/start`, {
-        method: "POST",
-      });
-
-      if (response.ok) {
-        toast.success("Benchmark 已开始执行");
-        const data = await response.json();
-        router.push(`/benchmarks/${benchmarkId}`);
-        router.refresh();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "启动失败");
-      }
+      await api.benchmarks.startExecution(benchmarkId);
+      toast.success("Benchmark execution started");
+      router.push(`/benchmarks/${benchmarkId}`);
+      router.refresh();
     } catch (error) {
       console.error("Error starting benchmark:", error);
-      toast.error("启动失败");
+      const message = error instanceof Error ? error.message : "Failed to start";
+      toast.error(message);
     }
   };
 
-  const getStatusBadge = (stats: ExecutionStats | null) => {
-    if (!stats) return <Badge variant="secondary">未执行</Badge>;
-    if (stats.running > 0) return <Badge variant="default">运行中</Badge>;
-    if (stats.failed > 0) return <Badge variant="destructive">有失败</Badge>;
+  const getStatusBadge = (stats: ExecutionStats | null | undefined) => {
+    if (!stats) return <Badge variant="secondary">Not Executed</Badge>;
+    if (stats.running > 0) return <Badge variant="default">Running</Badge>;
+    if (stats.failed > 0) return <Badge variant="destructive">Has Failures</Badge>;
     if (stats.completed === stats.total)
-      return <Badge variant="default">已完成</Badge>;
-    return <Badge variant="secondary">执行中</Badge>;
+      return <Badge variant="default">Completed</Badge>;
+    return <Badge variant="secondary">In Progress</Badge>;
   };
 
   const toggleAgent = (agentId: number) => {
@@ -296,22 +258,15 @@ export default function BenchmarksPage() {
 
     setDeleting(true);
     try {
-      const response = await fetch(`/api/benchmarks/${benchmarkToDelete.id}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
-        toast.success("Benchmark 已删除");
-        setDeleteDialogOpen(false);
-        setBenchmarkToDelete(null);
-        fetchData();
-      } else {
-        const error = await response.json();
-        toast.error(error.error || "删除失败");
-      }
+      await api.benchmarks.delete(benchmarkToDelete.id);
+      toast.success("Benchmark deleted");
+      setDeleteDialogOpen(false);
+      setBenchmarkToDelete(null);
+      fetchData();
     } catch (error) {
       console.error("Error deleting benchmark:", error);
-      toast.error("删除失败");
+      const message = error instanceof Error ? error.message : "Delete failed";
+      toast.error(message);
     } finally {
       setDeleting(false);
     }
@@ -365,7 +320,7 @@ export default function BenchmarksPage() {
   const getTestSetName = (testSetId: number | null) => {
     if (!testSetId) return "-";
     const testSet = testSets.find((ts) => ts.id === testSetId);
-    return testSet?.name || `测试集 #${testSetId}`;
+    return testSet?.name || `Test Set #${testSetId}`;
   };
 
   const getTestSetCount = (testSetId: number | null) => {
@@ -378,22 +333,22 @@ export default function BenchmarksPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Benchmark 管理</h1>
+          <h1 className="text-3xl font-bold">Benchmark Management</h1>
           <p className="text-muted-foreground mt-2">
-            创建和管理 Benchmark 测试计划，选择测试集和 Agents
+            Create and manage Benchmark test plans, select test sets and Agents
           </p>
         </div>
         <Button onClick={openCreateDialog}>
           <Plus className="h-4 w-4 mr-2" />
-          新建 Benchmark
+          New Benchmark
         </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Benchmark 列表</CardTitle>
+          <CardTitle>Benchmark List</CardTitle>
           <CardDescription>
-            共 {benchmarks.length} 个 Benchmark 测试计划
+            {benchmarks.length} Benchmark test plans
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -404,25 +359,25 @@ export default function BenchmarksPage() {
           ) : benchmarks.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <PlayCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>暂无 Benchmark</p>
+              <p>No Benchmarks</p>
               <Button
                 variant="outline"
                 className="mt-4"
                 onClick={openCreateDialog}
               >
-                创建第一个 Benchmark
+                Create your first Benchmark
               </Button>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>测试集</TableHead>
-                  <TableHead>Agent 数</TableHead>
-                  <TableHead>最新执行</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Test Set</TableHead>
+                  <TableHead>Agents</TableHead>
+                  <TableHead>Latest Execution</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -442,7 +397,7 @@ export default function BenchmarksPage() {
                             {getTestSetName(benchmark.test_set_id)}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {getTestSetCount(benchmark.test_set_id)} 个用例
+                            {getTestSetCount(benchmark.test_set_id)} cases
                           </div>
                         </div>
                       </div>
@@ -460,7 +415,7 @@ export default function BenchmarksPage() {
                           <span>{benchmark.latestStats.total}</span>
                           {benchmark.latestStats.avgScore !== null && (
                             <span className="ml-2 text-muted-foreground">
-                              (均分: {benchmark.latestStats.avgScore.toFixed(1)}
+                              (avg: {benchmark.latestStats.avgScore.toFixed(1)}
                               )
                             </span>
                           )}
@@ -477,7 +432,7 @@ export default function BenchmarksPage() {
                           onClick={() => openEditDialog(benchmark)}
                         >
                           <Pencil className="h-4 w-4 mr-1" />
-                          编辑
+                          Edit
                         </Button>
                         <Button
                           size="sm"
@@ -487,14 +442,14 @@ export default function BenchmarksPage() {
                           }
                         >
                           <History className="h-4 w-4 mr-1" />
-                          执行记录
+                          History
                         </Button>
                         <Button
                           size="sm"
                           onClick={() => startBenchmark(benchmark.id)}
                         >
                           <Play className="h-4 w-4 mr-1" />
-                          执行
+                          Run
                         </Button>
                         <Button
                           size="sm"
@@ -524,12 +479,12 @@ export default function BenchmarksPage() {
         <DialogContent className="!max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingBenchmark ? "编辑 Benchmark" : "新建 Benchmark"}
+              {editingBenchmark ? "Edit Benchmark" : "New Benchmark"}
             </DialogTitle>
             <DialogDescription>
               {editingBenchmark
-                ? "查看和修改 Benchmark 配置"
-                : "配置 Benchmark 测试计划，选择测试集和 Agents"}
+                ? "View and modify Benchmark configuration"
+                : "Configure Benchmark test plan, select test sets and Agents"}
             </DialogDescription>
           </DialogHeader>
 
@@ -540,9 +495,9 @@ export default function BenchmarksPage() {
                 name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>名称</FormLabel>
+                    <FormLabel>Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="Benchmark 名称" {...field} />
+                      <Input placeholder="Benchmark name" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -554,9 +509,9 @@ export default function BenchmarksPage() {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>描述</FormLabel>
+                    <FormLabel>Description</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Benchmark 描述" {...field} />
+                      <Textarea placeholder="Benchmark description" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -565,7 +520,7 @@ export default function BenchmarksPage() {
 
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <FormLabel>选择 Agents</FormLabel>
+                  <FormLabel>Select Agents</FormLabel>
                   <div className="mt-2 border rounded-md p-4 space-y-2 max-h-[200px] overflow-y-auto">
                     {agents.map((agent) => (
                       <div
@@ -601,7 +556,7 @@ export default function BenchmarksPage() {
                     name="test_set_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>选择测试集</FormLabel>
+                        <FormLabel>Select Test Set</FormLabel>
                         <Select
                           onValueChange={(value) => {
                             if (value) field.onChange(parseInt(value));
@@ -610,11 +565,11 @@ export default function BenchmarksPage() {
                         >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="选择测试集">
+                              <SelectValue placeholder="Select test set">
                                 {field.value
                                   ? testSets.find((ts) => ts.id === field.value)
-                                      ?.name || "选择测试集"
-                                  : "选择测试集"}
+                                      ?.name || "Select test set"
+                                  : "Select test set"}
                               </SelectValue>
                             </SelectTrigger>
                           </FormControl>
@@ -627,7 +582,7 @@ export default function BenchmarksPage() {
                                 <div className="flex flex-col">
                                   <span>{testSet.name}</span>
                                   <span className="text-xs text-muted-foreground">
-                                    {testSet.test_case_count || 0} 个用例
+                                    {testSet.test_case_count || 0} cases
                                   </span>
                                 </div>
                               </SelectItem>
@@ -646,7 +601,7 @@ export default function BenchmarksPage() {
                 name="evaluator_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>评估器</FormLabel>
+                    <FormLabel>Evaluator</FormLabel>
                     <Select
                       onValueChange={(value) => {
                         if (value) field.onChange(parseInt(value));
@@ -655,11 +610,11 @@ export default function BenchmarksPage() {
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="选择评估器">
+                          <SelectValue placeholder="Select evaluator">
                             {field.value
                               ? evaluators.find((e) => e.id === field.value)
-                                  ?.name || "选择评估器"
-                              : "选择评估器"}
+                                  ?.name || "Select evaluator"
+                              : "Select evaluator"}
                           </SelectValue>
                         </SelectTrigger>
                       </FormControl>
@@ -684,34 +639,34 @@ export default function BenchmarksPage() {
                 name="run_config"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>运行配置 (JSON)</FormLabel>
+                    <FormLabel>Run Configuration (JSON)</FormLabel>
                     <div className="text-sm text-muted-foreground space-y-1 mb-2">
-                      <p>配置变量说明：</p>
+                      <p>Configuration variables:</p>
                       <ul className="list-disc list-inside space-y-0.5 ml-2">
                         <li>
                           <code className="bg-muted px-1 rounded">
                             prompt_template
                           </code>{" "}
-                          - 提示词模板，使用 {"{{input}}"} 插入测试用例输入
+                          - Prompt template, use {"{{input}}"} to insert test case input
                         </li>
                         <li>
                           <code className="bg-muted px-1 rounded">
                             use_session
                           </code>{" "}
-                          - 是否保持会话状态（true/false）
+                          - Whether to maintain session state (true/false)
                         </li>
                         <li>
                           <code className="bg-muted px-1 rounded">
                             max_workers
                           </code>{" "}
-                          - 并行执行的最大 worker 数量
+                          - Maximum number of parallel workers
                         </li>
                         <li>
                           <code className="bg-muted px-1 rounded">
                             variables
                           </code>{" "}
-                          - 自定义变量，可在提示词模板中使用{" "}
-                          {"{{variable_name}}"} 引用
+                          - Custom variables, can be referenced in prompt template as{" "}
+                          {"{{variable_name}}"}
                         </li>
                       </ul>
                     </div>
@@ -721,7 +676,7 @@ export default function BenchmarksPage() {
                         onChange={(value) => {
                           field.onChange(value);
                         }}
-                        placeholder="运行配置 JSON"
+                        placeholder="Run configuration JSON"
                         minHeight="300px"
                       />
                     </FormControl>
@@ -732,7 +687,7 @@ export default function BenchmarksPage() {
 
               <DialogFooter>
                 <Button type="submit">
-                  {editingBenchmark ? "保存" : "创建"}
+                  {editingBenchmark ? "Save" : "Create"}
                 </Button>
               </DialogFooter>
             </form>
@@ -740,15 +695,15 @@ export default function BenchmarksPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 删除确认对话框 */}
+      {/* Delete confirmation dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>确认删除</DialogTitle>
+            <DialogTitle>Confirm Delete</DialogTitle>
             <DialogDescription>
-              确定要删除 Benchmark &quot;{benchmarkToDelete?.name}&quot; 吗？
+              Are you sure you want to delete Benchmark &quot;{benchmarkToDelete?.name}&quot;?
               <br />
-              此操作将同时删除该 Benchmark 的所有执行记录和结果，且无法撤销。
+This action will also delete all execution records and results for this Benchmark and cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -757,7 +712,7 @@ export default function BenchmarksPage() {
               onClick={() => setDeleteDialogOpen(false)}
               disabled={deleting}
             >
-              取消
+              Cancel
             </Button>
             <Button
               variant="destructive"
@@ -767,12 +722,12 @@ export default function BenchmarksPage() {
               {deleting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  删除中...
+                  Deleting...
                 </>
               ) : (
                 <>
                   <Trash2 className="h-4 w-4 mr-2" />
-                  删除
+                  Delete
                 </>
               )}
             </Button>
