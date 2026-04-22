@@ -1,0 +1,38 @@
+{
+  "id": "lark",
+  "name": "Lark/Feishu",
+  "description": "Import test cases from Lark/Feishu",
+  "icon": "/lark.png",
+  "capabilities": ["import:test-cases"],
+  "docsUrl": "https://open.feishu.cn",
+  "configFields": [
+    {
+      "name": "appType",
+      "label": "App Type",
+      "type": "select",
+      "required": true,
+      "defaultValue": "feishu",
+      "description": "Choose Lark (International) or Feishu (China)",
+      "options": [
+        { "label": "Feishu (China)", "value": "feishu" },
+        { "label": "Lark (International)", "value": "lark" }
+      ]
+    },
+    {
+      "name": "appId",
+      "label": "App ID",
+      "type": "text",
+      "required": true,
+      "placeholder": "cli_xxx",
+      "description": "App ID from Lark/Feishu developer console"
+    },
+    {
+      "name": "appSecret",
+      "label": "App Secret",
+      "type": "password",
+      "required": true,
+      "placeholder": "xxx",
+      "description": "App Secret from Lark/Feishu developer console"
+    }
+  ]
+}

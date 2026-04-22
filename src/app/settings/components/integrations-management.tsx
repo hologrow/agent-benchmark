@@ -39,112 +39,16 @@ import { toast } from "sonner";
 import { Loader2, ExternalLink, Settings, Puzzle } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Integration } from "@/types/api";
+import type {
+  BuiltinIntegrationConfigField,
+  BuiltinIntegrationPluginMeta,
+} from "@/lib/plugins/builtin-integration-plugins.types";
 
-// Plugin metadata definitions
-interface PluginMeta {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  capabilities: string[];
-  configFields: ConfigField[];
-}
-
-interface ConfigField {
-  name: string;
-  label: string;
-  type: "text" | "password" | "url" | "select" | "textarea";
-  required?: boolean;
-  defaultValue?: string | number | boolean;
-  placeholder?: string;
-  description?: string;
-  options?: { label: string; value: string }[];
-}
-
-// Bundled plugin metadata
-const BUILTIN_PLUGINS: PluginMeta[] = [
-  {
-    id: "langfuse",
-    name: "Langfuse",
-    description: "Trace tracking service",
-    icon: "/langfuse.png",
-    capabilities: ["trace:execution"],
-    configFields: [
-      {
-        name: "baseUrl",
-        label: "Base URL",
-        type: "url",
-        required: true,
-        defaultValue: "https://cloud.langfuse.com",
-        placeholder: "https://cloud.langfuse.com",
-        description: "Langfuse service URL, keep default for cloud version, fill custom domain for self-hosted",
-      },
-      {
-        name: "publicKey",
-        label: "Public Key",
-        type: "text",
-        required: true,
-        placeholder: "pk-lf-...",
-        description: "Public Key from Langfuse project settings",
-      },
-      {
-        name: "secretKey",
-        label: "Secret Key",
-        type: "password",
-        required: true,
-        placeholder: "sk-lf-...",
-        description: "Secret Key from Langfuse project settings",
-      },
-    ],
-  },
-  {
-    id: "lark",
-    name: "Lark/Feishu",
-    description: "Import test cases from Lark/Feishu",
-    icon: "/lark.png",
-    capabilities: ["import:test-cases"],
-    configFields: [
-      {
-        name: "appType",
-        label: "App Type",
-        type: "select",
-        required: true,
-        defaultValue: "feishu",
-        description: "Choose Lark (International) or Feishu (China)",
-        options: [
-          { label: "Feishu (China)", value: "feishu" },
-          { label: "Lark (International)", value: "lark" },
-        ],
-      },
-      {
-        name: "appId",
-        label: "App ID",
-        type: "text",
-        required: true,
-        placeholder: "cli_xxx",
-        description: "App ID from Lark/Feishu developer console",
-      },
-      {
-        name: "appSecret",
-        label: "App Secret",
-        type: "password",
-        required: true,
-        placeholder: "xxx",
-        description: "App Secret from Lark/Feishu developer console",
-      },
-      {
-        name: "baseUrl",
-        label: "Custom Domain",
-        type: "url",
-        required: false,
-        placeholder: "https://open.feishu.cn",
-        description: "For private deployment, fill in custom domain (optional)",
-      },
-    ],
-  },
-];
-
-export function IntegrationsManagement() {
+export function IntegrationsManagement({
+  plugins,
+}: {
+  plugins: BuiltinIntegrationPluginMeta[];
+}) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -154,7 +58,8 @@ export function IntegrationsManagement() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
 
   // Currently editing plugin
-  const [currentPlugin, setCurrentPlugin] = useState<PluginMeta | null>(null);
+  const [currentPlugin, setCurrentPlugin] =
+    useState<BuiltinIntegrationPluginMeta | null>(null);
   const [currentConfig, setCurrentConfig] = useState<Record<string, unknown>>({});
   const [currentEnabled, setCurrentEnabled] = useState(false);
 
@@ -178,7 +83,7 @@ export function IntegrationsManagement() {
     return integrations.find((i) => i.type === type);
   };
 
-  const handleOpenDialog = (plugin: PluginMeta) => {
+  const handleOpenDialog = (plugin: BuiltinIntegrationPluginMeta) => {
     setCurrentPlugin(plugin);
 
     const integration = getIntegration(plugin.id);
@@ -256,7 +161,7 @@ export function IntegrationsManagement() {
     }
   };
 
-  const toggleIntegration = async (plugin: PluginMeta) => {
+  const toggleIntegration = async (plugin: BuiltinIntegrationPluginMeta) => {
     const integration = getIntegration(plugin.id);
     const newEnabled = integration ? !integration.enabled : true;
 
@@ -289,7 +194,9 @@ export function IntegrationsManagement() {
     }
   };
 
-  const getDefaultConfig = (plugin: PluginMeta): Record<string, unknown> => {
+  const getDefaultConfig = (
+    plugin: BuiltinIntegrationPluginMeta,
+  ): Record<string, unknown> => {
     const defaults: Record<string, unknown> = {};
     for (const field of plugin.configFields) {
       defaults[field.name] = field.defaultValue ?? "";
@@ -297,7 +204,7 @@ export function IntegrationsManagement() {
     return defaults;
   };
 
-  const renderConfigField = (field: ConfigField) => {
+  const renderConfigField = (field: BuiltinIntegrationConfigField) => {
     const value = currentConfig[field.name] ?? "";
 
     switch (field.type) {
@@ -385,7 +292,7 @@ export function IntegrationsManagement() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {BUILTIN_PLUGINS.map((plugin) => {
+              {plugins.map((plugin) => {
                 const integration = getIntegration(plugin.id);
                 const isEnabled = integration?.enabled;
 
@@ -426,7 +333,7 @@ export function IntegrationsManagement() {
                 );
               })}
 
-              {BUILTIN_PLUGINS.length === 0 && (
+              {plugins.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={4}
@@ -455,20 +362,16 @@ export function IntegrationsManagement() {
                     className="h-6 w-6 object-contain"
                   />
                   {currentPlugin.name} Configuration
-                  <a
-                    href={
-                      currentPlugin.id === "langfuse"
-                        ? "https://langfuse.com"
-                        : currentPlugin.id === "lark"
-                          ? "https://open.feishu.cn"
-                          : "#"
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-muted-foreground hover:text-primary"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
+                  {currentPlugin.docsUrl ? (
+                    <a
+                      href={currentPlugin.docsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-muted-foreground hover:text-primary"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  ) : null}
                 </>
               )}
             </DialogTitle>
