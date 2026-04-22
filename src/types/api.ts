@@ -211,6 +211,8 @@ export interface IntegrationConfig {
 export interface UpdateIntegrationRequest {
   enabled: boolean;
   config: IntegrationConfig;
+  /** 与 `POST /api/integrations?type=` 搭配时可传，新建时用作展示名 */
+  name?: string;
 }
 
 // ==================== API Response Types ====================

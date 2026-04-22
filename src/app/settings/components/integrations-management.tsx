@@ -125,6 +125,7 @@ export function IntegrationsManagement({
       await api.integrations.update(currentPlugin.id, {
         enabled: currentEnabled,
         config: currentConfig,
+        name: currentPlugin.name,
       });
 
       toast.success(`${currentPlugin.name} configuration saved`);
