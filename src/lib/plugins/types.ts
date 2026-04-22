@@ -13,18 +13,18 @@
  */
 export enum Capability {
   // Data import capability - Provides test case import button and processing logic
-  IMPORT_TEST_CASES = 'import:test-cases',
+  IMPORT_TEST_CASES = "import:test-cases",
   /**
    * Execution trace provider: must be able to find traces by magic code and time range
    * (see {@link CapabilityInterfaces}[TRACE_EXECUTION].searchTraces).
    */
-  TRACE_EXECUTION = 'trace:execution',
+  TRACE_EXECUTION = "trace:execution",
   // Data export capability
-  EXPORT_RESULTS = 'export:results',
+  EXPORT_RESULTS = "export:results",
   // Notification capability
-  NOTIFY = 'notify',
+  NOTIFY = "notify",
   // Custom evaluation capability
-  CUSTOM_EVALUATION = 'evaluation:custom',
+  CUSTOM_EVALUATION = "evaluation:custom",
 }
 
 /**
@@ -40,7 +40,7 @@ export interface ImportButtonUI {
   /** Button icon (Lucide icon name) */
   icon: string;
   /** Button style variant */
-  variant?: 'default' | 'outline' | 'secondary' | 'ghost';
+  variant?: "default" | "outline" | "secondary" | "ghost";
   /** Button color */
   color?: string;
 }
@@ -107,10 +107,9 @@ export interface LegacySyncCatalogResult {
 }
 
 export interface SyncTestCasesToDatabaseInput {
-  appToken: string;
   tableId: string;
   viewId?: string;
-  syncMode?: 'upsert' | 'create_only' | 'update_only';
+  syncMode?: "upsert" | "create_only" | "update_only";
   columnMapping?: Record<string, string>;
   createTestSet?: boolean;
   testSetName?: string;
@@ -134,7 +133,7 @@ export interface SyncTestCasesToDatabaseResult {
   errors: string[];
 }
 
-/** One parsed row ready for TestCasePersistencePort / externalTableSync (plugins/host). */
+/** One parsed row ready for HostBridge CRUD / persistAfterFetch（plugins/host）。 */
 export interface LegacySyncParsedTestCasePayload {
   test_id: string;
   name: string;
@@ -147,7 +146,7 @@ export interface LegacySyncParsedTestCasePayload {
   how: string;
 }
 
-/** Result of {@link CapabilityInterfaces}[IMPORT_TEST_CASES].fetchLegacySyncRecords — fetch/parse only, no DB. */
+/** Bitable 拉取并解析后的结果（不落库）。 */
 export interface LegacySyncFetchResult {
   success: boolean;
   /** Total raw rows from the external source (before skipping invalid). */
@@ -187,7 +186,10 @@ export interface CapabilityInterfaces {
      * @param items List of item identifiers to import
      * @param fieldMapping Optional field mapping from table fields to system fields
      */
-    importItems(items: string[], fieldMapping?: Record<string, string>): Promise<{
+    importItems(
+      items: string[],
+      fieldMapping?: Record<string, string>,
+    ): Promise<{
       success: boolean;
       importedCount: number;
       testCases: TestCaseData[];
@@ -222,20 +224,6 @@ export interface CapabilityInterfaces {
       sourceId: string,
       tableId: string,
     ): Promise<ImportSchemaField[]>;
-
-    /**
-     * Legacy admin sync: list tables / fields + system field hints for mapping UI (e.g. Bitable).
-     */
-    getLegacySyncCatalog?(
-      query: LegacySyncCatalogQuery,
-    ): Promise<LegacySyncCatalogResult>;
-
-    /**
-     * 外部表拉取并解析（不落库）。持久化由应用注入的 `PluginHostContext.externalTableSync` 完成（见 plugins/host）。
-     */
-    fetchLegacySyncRecords?(
-      input: SyncTestCasesToDatabaseInput,
-    ): Promise<LegacySyncFetchResult>;
   };
 
   [Capability.TRACE_EXECUTION]: {
@@ -248,11 +236,13 @@ export interface CapabilityInterfaces {
       executionId?: number;
       fromTime?: Date;
       toTime?: Date;
-    }): Promise<Array<{
-      traceId: string;
-      traceContent: string;
-      timestamp?: string;
-    }>>;
+    }): Promise<
+      Array<{
+        traceId: string;
+        traceContent: string;
+        timestamp?: string;
+      }>
+    >;
     /** Get trace details */
     getTrace(traceId: string): Promise<{
       traceId: string;
@@ -277,7 +267,7 @@ export interface CapabilityInterfaces {
     send(message: {
       title: string;
       content: string;
-      level?: 'info' | 'warning' | 'error';
+      level?: "info" | "warning" | "error";
     }): Promise<{ success: boolean; error?: string }>;
   };
 
@@ -306,7 +296,14 @@ export interface PluginConfigField {
   /** Display label */
   label: string;
   /** Field type */
-  type: 'text' | 'password' | 'url' | 'number' | 'select' | 'textarea' | 'boolean';
+  type:
+    | "text"
+    | "password"
+    | "url"
+    | "number"
+    | "select"
+    | "textarea"
+    | "boolean";
   /** Whether required */
   required?: boolean;
   /** Default value */
@@ -367,7 +364,10 @@ export interface IPlugin {
   setConfig(config: Record<string, unknown>): void;
 
   /** Validate if config is valid */
-  validateConfig(config: Record<string, unknown>): { valid: boolean; errors?: string[] };
+  validateConfig(config: Record<string, unknown>): {
+    valid: boolean;
+    errors?: string[];
+  };
 
   /** Initialize plugin (called after config is set) */
   initialize?(): Promise<void>;
@@ -385,19 +385,23 @@ export interface IPlugin {
 /**
  * Plugin that implements the import:test-cases capability surface (used by discover API).
  */
-export type ImportTestCasesPlugin = IPlugin & CapabilityType<Capability.IMPORT_TEST_CASES>;
+export type ImportTestCasesPlugin = IPlugin &
+  CapabilityType<Capability.IMPORT_TEST_CASES>;
 
 /**
  * Runtime guard: metadata claims IMPORT_TEST_CASES and required methods exist.
  */
-export function isImportTestCasesPlugin(plugin: IPlugin): plugin is ImportTestCasesPlugin {
+export function isImportTestCasesPlugin(
+  plugin: IPlugin,
+): plugin is ImportTestCasesPlugin {
   if (!plugin.hasCapability(Capability.IMPORT_TEST_CASES)) {
     return false;
   }
-  const candidate = plugin as IPlugin & Partial<CapabilityType<Capability.IMPORT_TEST_CASES>>;
+  const candidate = plugin as IPlugin &
+    Partial<CapabilityType<Capability.IMPORT_TEST_CASES>>;
   return (
-    typeof candidate.getImportButtonUI === 'function' &&
-    typeof candidate.getImportDialog === 'function'
+    typeof candidate.getImportButtonUI === "function" &&
+    typeof candidate.getImportDialog === "function"
   );
 }
 
@@ -408,50 +412,36 @@ export function hasImportSchemaMethods(
   Required<
     Pick<
       CapabilityType<Capability.IMPORT_TEST_CASES>,
-      'listImportSources' | 'listImportTables' | 'listImportFields'
+      "listImportSources" | "listImportTables" | "listImportFields"
     >
   > {
   if (!isImportTestCasesPlugin(plugin)) return false;
   const c = plugin as ImportTestCasesPlugin;
   return (
-    typeof c.listImportSources === 'function' &&
-    typeof c.listImportTables === 'function' &&
-    typeof c.listImportFields === 'function'
-  );
-}
-
-/** Plugin implements legacy Bitable catalog + fetch (getLegacySyncCatalog + fetchLegacySyncRecords). */
-export function hasLegacySyncMethods(
-  plugin: IPlugin,
-): plugin is ImportTestCasesPlugin &
-  Required<
-    Pick<
-      CapabilityType<Capability.IMPORT_TEST_CASES>,
-      'getLegacySyncCatalog' | 'fetchLegacySyncRecords'
-    >
-  > {
-  if (!isImportTestCasesPlugin(plugin)) return false;
-  const c = plugin as ImportTestCasesPlugin;
-  return (
-    typeof c.getLegacySyncCatalog === 'function' &&
-    typeof c.fetchLegacySyncRecords === 'function'
+    typeof c.listImportSources === "function" &&
+    typeof c.listImportTables === "function" &&
+    typeof c.listImportFields === "function"
   );
 }
 
 /**
  * Plugin that implements trace:execution (search by magic code + time range, etc.).
  */
-export type TraceExecutionPlugin = IPlugin & CapabilityType<Capability.TRACE_EXECUTION>;
+export type TraceExecutionPlugin = IPlugin &
+  CapabilityType<Capability.TRACE_EXECUTION>;
 
-export function isTraceExecutionPlugin(plugin: IPlugin): plugin is TraceExecutionPlugin {
+export function isTraceExecutionPlugin(
+  plugin: IPlugin,
+): plugin is TraceExecutionPlugin {
   if (!plugin.hasCapability(Capability.TRACE_EXECUTION)) {
     return false;
   }
-  const candidate = plugin as IPlugin & Partial<CapabilityType<Capability.TRACE_EXECUTION>>;
+  const candidate = plugin as IPlugin &
+    Partial<CapabilityType<Capability.TRACE_EXECUTION>>;
   return (
-    typeof candidate.searchTraces === 'function' &&
-    typeof candidate.getTrace === 'function' &&
-    typeof candidate.getTraceUrl === 'function'
+    typeof candidate.searchTraces === "function" &&
+    typeof candidate.getTrace === "function" &&
+    typeof candidate.getTraceUrl === "function"
   );
 }
 

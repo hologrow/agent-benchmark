@@ -2,21 +2,24 @@
  * Lark 插件浏览器侧：调用 `/api/plugins/:id` 与 `/api/test-cases/sync`（Bitable），类型见 `./api-types`。
  */
 
-import { apiRequest } from '@/lib/api-request';
+import { apiRequest } from "@/lib/api-request";
 import type {
   LegacySyncFetchResult,
   SyncTestCasesToDatabaseInput,
   SyncTestCasesToDatabaseResult,
-} from '@/lib/plugins/types';
-import type { PluginImportCommand } from '@/types/api';
-import type { ListLarkFieldsResponse, ListLarkTablesResponse } from './api-types';
+} from "@/lib/plugins/types";
+import type { PluginImportCommand } from "@/types/api";
+import type {
+  ListLarkFieldsResponse,
+  ListLarkTablesResponse,
+} from "./api-types";
 
 async function postPluginImport<T>(
   pluginId: string,
   command: PluginImportCommand,
 ): Promise<T> {
   return apiRequest<T>(`/api/plugins/${encodeURIComponent(pluginId)}`, {
-    method: 'POST',
+    method: "POST",
     body: JSON.stringify(command),
   });
 }
@@ -27,7 +30,7 @@ export function larkListImportTables(
   sourceId: string,
 ): Promise<ListLarkTablesResponse> {
   return postPluginImport(pluginId, {
-    action: 'listImportTables',
+    action: "listImportTables",
     payload: { sourceId },
   });
 }
@@ -39,32 +42,26 @@ export function larkListImportFields(
   tableId: string,
 ): Promise<ListLarkFieldsResponse> {
   return postPluginImport(pluginId, {
-    action: 'listImportFields',
+    action: "listImportFields",
     payload: { sourceId, tableId },
   });
 }
 
-/** POST `/api/test-cases/sync`：拉取并落库（Bitable 向导「导入」）。 */
-export function larkLegacySyncToDatabase(
-  pluginId: string,
-  payload: SyncTestCasesToDatabaseInput,
-): Promise<SyncTestCasesToDatabaseResult> {
-  return apiRequest<SyncTestCasesToDatabaseResult>('/api/test-cases/sync', {
-    method: 'POST',
-    body: JSON.stringify({ ...payload, pluginId }),
-  });
-}
-
-/** POST `/api/test-cases/sync` + `persist: false`，仅拉数不落库。 */
-export function larkLegacySyncFetchOnly(
+/**
+ * 仅拉数不落库：走 `POST /api/plugins/:pluginId` 插件路由 `bitable.fetchRecords`（服务端 Lark SDK）。
+ */
+export function getBitTableData(
   pluginId: string,
   payload: SyncTestCasesToDatabaseInput,
 ): Promise<{ fetchResult: LegacySyncFetchResult }> {
   return apiRequest<{ fetchResult: LegacySyncFetchResult }>(
-    '/api/test-cases/sync',
+    `/api/plugins/${encodeURIComponent(pluginId)}`,
     {
-      method: 'POST',
-      body: JSON.stringify({ ...payload, pluginId, persist: false }),
+      method: "POST",
+      body: JSON.stringify({
+        route: "bitable.fetchRecords",
+        payload,
+      }),
     },
   );
 }

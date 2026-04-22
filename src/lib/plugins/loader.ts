@@ -16,9 +16,6 @@ import { getAllIntegrations } from "../db";
 /** Bundled factory for register / ensure helpers. */
 export type BuiltInPluginFactory = { id: string; create: () => IPlugin };
 
-/**
- * Must mirror on-disk folders under `built-in/` (add import + row when adding a plugin so the bundler includes it).
- */
 const BUILT_IN_REGISTRY: Record<string, BuiltInPluginFactory> = {
   lark: larkEntry,
   langfuse: langfuseEntry,
@@ -36,7 +33,7 @@ export function getBuiltInPluginFactoriesFromLayout(): BuiltInPluginFactory[] {
           (d) =>
             d.isDirectory() &&
             !d.name.startsWith("_") &&
-            d.name !== "node_modules"
+            d.name !== "node_modules",
         )
         .map((d) => d.name)
     : Object.keys(BUILT_IN_REGISTRY).sort();
@@ -46,7 +43,7 @@ export function getBuiltInPluginFactoriesFromLayout(): BuiltInPluginFactory[] {
     const factory = BUILT_IN_REGISTRY[name];
     if (!factory) {
       console.warn(
-        `[PluginLoader] Built-in folder "${name}" is not registered in loader.ts BUILT_IN_REGISTRY — add import and entry`
+        `[PluginLoader] Built-in folder "${name}" is not registered in loader.ts BUILT_IN_REGISTRY — add import and entry`,
       );
       continue;
     }
@@ -97,20 +94,23 @@ export function loadPluginConfigsFromDatabase(): void {
         pluginRegistry.loadConfig(
           integration.type,
           integration.enabled === 1,
-          config
+          config,
         );
         console.log(
-          `[PluginLoader] Config loaded: ${integration.name} (${integration.type}), enabled=${integration.enabled === 1}`
+          `[PluginLoader] Config loaded: ${integration.name} (${integration.type}), enabled=${integration.enabled === 1}`,
         );
       } catch (e) {
         console.error(
           `[PluginLoader] Failed to load config: ${integration.type}`,
-          e
+          e,
         );
       }
     }
   } catch (error) {
-    console.error("[PluginLoader] Failed to load configs from database:", error);
+    console.error(
+      "[PluginLoader] Failed to load configs from database:",
+      error,
+    );
   }
 }
 

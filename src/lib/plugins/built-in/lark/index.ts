@@ -1,6 +1,7 @@
+import "server-only";
 /**
- * Lark/Feishu — **服务端注册**：`LarkPlugin` + `./bitable`（Lark SDK，供 API/registry 使用）。
- * **浏览器**：`browser-api.ts`（REST）、`client.ts`（宿主落库）、`import-dialog.tsx`（命令式弹窗）。
+ * server instance
+   singleton
  */
 
 import { Client, Domain } from "@larksuiteoapi/node-sdk";
@@ -13,18 +14,7 @@ import {
   type ImportSchemaSource,
   type TestCaseData,
 } from "../../";
-import type {
-  IPlugin,
-  LegacySyncCatalogQuery,
-  LegacySyncCatalogResult,
-  LegacySyncFetchResult,
-  SyncTestCasesToDatabaseInput,
-} from "../../types";
-import {
-  runLegacySyncCatalog,
-  fetchLegacyBitableRecordsForSync,
-  createEnvBasedLarkClient,
-} from "./bitable";
+import type { IPlugin } from "../../types";
 
 interface LarkConfig {
   appId: string;
@@ -43,8 +33,6 @@ export class LarkPlugin extends BasePlugin {
   listImportSources!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["listImportSources"];
   listImportTables!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["listImportTables"];
   listImportFields!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["listImportFields"];
-  getLegacySyncCatalog!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["getLegacySyncCatalog"];
-  fetchLegacySyncRecords!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["fetchLegacySyncRecords"];
 
   constructor() {
     super({
@@ -93,32 +81,17 @@ export class LarkPlugin extends BasePlugin {
     this.listImportSources = this._listImportSources.bind(this);
     this.listImportTables = this._listImportTables.bind(this);
     this.listImportFields = this._listImportFields.bind(this);
-    this.getLegacySyncCatalog = this._getLegacySyncCatalog.bind(this);
-    this.fetchLegacySyncRecords = this._fetchLegacySyncRecords.bind(this);
   }
 
-  /** Prefer integration credentials; fall back to env vars when config is empty. */
-  private getClientForLegacySync(): Client {
+  /**
+   * 服务端路由专用：带集成凭据的 Lark SDK Client；无集成配置时回退 LARK_* / FEISHU_*。
+   */
+  createBitableSyncClient(): Client {
     const cfg = this.getLarkConfig();
     if (cfg.appId && cfg.appSecret) {
       return this.getClient();
     }
-    return createEnvBasedLarkClient();
-  }
-
-  private async _getLegacySyncCatalog(
-    query: LegacySyncCatalogQuery,
-  ): Promise<LegacySyncCatalogResult> {
-    return runLegacySyncCatalog(this.getClientForLegacySync(), query);
-  }
-
-  private async _fetchLegacySyncRecords(
-    input: SyncTestCasesToDatabaseInput,
-  ): Promise<LegacySyncFetchResult> {
-    return fetchLegacyBitableRecordsForSync(
-      this.getClientForLegacySync(),
-      input,
-    );
+    throw new Error("lark require appSecret  & appid");
   }
 
   private async _listImportSources(): Promise<ImportSchemaSource[]> {
@@ -246,12 +219,12 @@ export class LarkPlugin extends BasePlugin {
 
   /**
    * Batch import test cases（仅拉取并解析，不落库）。
-   * 浏览器导入向导应走 POST `/api/test-cases/sync`（legacy sync + 宿主人库）。
+   * 浏览器 Bitable 向导应走 `/api/plugins/lark` 拉数 + `host.bridge.persistAfterFetch`，或 POST `/api/test-cases/sync` 一站式同步。
    * @param items Format: ["baseId/tableId"]
    */
   private async _importItems(
     items: string[],
-    fieldMapping?: Record<string, string>
+    fieldMapping?: Record<string, string>,
   ): Promise<{
     success: boolean;
     importedCount: number;
@@ -272,7 +245,7 @@ export class LarkPlugin extends BasePlugin {
           client,
           baseId,
           tableId,
-          fieldMapping
+          fieldMapping,
         );
         allTestCases.push(...testCases);
       }
@@ -372,13 +345,7 @@ export class LarkPlugin extends BasePlugin {
             "答案",
             "Answer",
           ],
-          key_points: [
-            "key_points",
-            "Key Points",
-            "关键点",
-            "要点",
-            "得分点",
-          ],
+          key_points: ["key_points", "Key Points", "关键点", "要点", "得分点"],
           forbidden_points: [
             "forbidden_points",
             "Forbidden Points",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, type ComponentType } from "react";
+import { useState, useRef, type ComponentType, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Dialog,
@@ -26,10 +26,12 @@ import { toast } from "sonner";
 import type { ImportButtonUI } from "@/types/api";
 import type { LarkField, LarkTable } from "./api-types";
 import {
-  larkLegacySyncToDatabase,
+  getBitTableData,
   larkListImportFields,
   larkListImportTables,
 } from "./browser-api";
+import type { SyncTestCasesToDatabaseInput } from "@/lib/plugins/types";
+import { createBrowserPluginHostContext } from "../../host/browser";
 
 /** Lark Bitable 向导表单 props */
 export type LarkBitableImportFormProps = {
@@ -87,6 +89,7 @@ export function LarkBitableImportForm({
   onCancel,
 }: LarkBitableImportFormProps) {
   const [loading, setLoading] = useState(false);
+  const host = useMemo(() => createBrowserPluginHostContext(), []);
   const [importing, setImporting] = useState(false);
   const [tables, setTables] = useState<LarkTable[]>([]);
   const [tableFields, setTableFields] = useState<LarkField[]>([]);
@@ -187,13 +190,18 @@ export function LarkBitableImportForm({
 
     setImporting(true);
     try {
-      const result = await larkLegacySyncToDatabase(pluginId, {
+      const syncInput: SyncTestCasesToDatabaseInput = {
         appToken: appId,
         tableId: selectedTableId,
         columnMapping: fieldMapping,
         syncMode: "upsert",
         createTestSet: true,
-      });
+      };
+      const { fetchResult } = await getBitTableData(pluginId, syncInput);
+      const result = await host.bridge.persistAfterFetch(
+        syncInput,
+        fetchResult,
+      );
 
       if (!result.success) {
         const msg =

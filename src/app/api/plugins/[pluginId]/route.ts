@@ -1,15 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { prepareImportPlugin } from '@/lib/plugins/route-utils';
+import { NextRequest, NextResponse } from "next/server";
+import { getPlugin } from "@/lib/plugins/route-utils";
+import { invokePluginHttpHandler } from "@/lib/plugins/plugin-http-routes";
 import {
   hasImportSchemaMethods,
   type ImportTestCasesPlugin,
-} from '@/lib/plugins/types';
+} from "@/lib/plugins/types";
+
+import "@/lib/plugins/built-in/lark/plugin-http-routes";
 
 const IMPORT_ACTIONS = [
-  'listImportSources',
-  'listImportTables',
-  'listImportFields',
-  'importTestCases',
+  "listImportSources",
+  "listImportTables",
+  "listImportFields",
+  "importTestCases",
 ] as const;
 
 type ImportAction = (typeof IMPORT_ACTIONS)[number];
@@ -18,26 +21,63 @@ function isImportAction(s: string): s is ImportAction {
   return (IMPORT_ACTIONS as readonly string[]).includes(s);
 }
 
+function parseJsonBody(request: NextRequest): Promise<unknown> {
+  return request
+    .text()
+    .then((t) => (t ? JSON.parse(t) : {}))
+    .catch(() => {
+      throw new SyntaxError("Invalid JSON");
+    });
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ pluginId: string }> },
 ) {
   const { pluginId } = await params;
+  let parsed: unknown;
   try {
-    const prepared = prepareImportPlugin(pluginId);
+    parsed = await parseJsonBody(request);
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const bodyObj = parsed as {
+    route?: string;
+    action?: string;
+    payload?: Record<string, unknown>;
+  };
+
+  if (typeof bodyObj.route === "string") {
+    const delegated = await invokePluginHttpHandler(pluginId, {
+      pluginId,
+      request,
+      method: "POST",
+      jsonBody: parsed,
+    });
+    if (delegated) {
+      return delegated;
+    }
+    return NextResponse.json(
+      { error: `Unknown route: ${bodyObj.route}`, pluginId },
+      { status: 404 },
+    );
+  }
+
+  try {
+    const prepared = getPlugin(pluginId);
     if (!prepared.ok) {
       return prepared.response;
     }
 
-    const body = (await request.json()) as {
-      action?: string;
-      payload?: Record<string, unknown>;
-    };
-    const { action, payload = {} } = body;
+    const { action, payload = {} } = bodyObj;
 
-    if (!action || typeof action !== 'string') {
+    if (!action || typeof action !== "string") {
       return NextResponse.json(
-        { error: 'Missing "action" in body', allowed: [...IMPORT_ACTIONS] },
+        {
+          error: 'Missing "action" in body (or use { route } for plugin HTTP)',
+          allowed: [...IMPORT_ACTIONS],
+        },
         { status: 400 },
       );
     }
@@ -53,7 +93,7 @@ export async function POST(
   } catch (error) {
     console.error(`[plugins/${pluginId}]`, error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Request failed' },
+      { error: error instanceof Error ? error.message : "Request failed" },
       { status: 500 },
     );
   }
@@ -65,10 +105,10 @@ async function handleImportAction(
   payload: Record<string, unknown>,
 ): Promise<NextResponse> {
   switch (action) {
-    case 'listImportSources': {
+    case "listImportSources": {
       if (!hasImportSchemaMethods(plugin)) {
         return NextResponse.json(
-          { error: 'Plugin does not support listImportSources' },
+          { error: "Plugin does not support listImportSources" },
           { status: 501 },
         );
       }
@@ -76,17 +116,18 @@ async function handleImportAction(
       return NextResponse.json({ sources });
     }
 
-    case 'listImportTables': {
+    case "listImportTables": {
       if (!hasImportSchemaMethods(plugin)) {
         return NextResponse.json(
-          { error: 'Plugin does not support listImportTables' },
+          { error: "Plugin does not support listImportTables" },
           { status: 501 },
         );
       }
-      const sourceId = typeof payload.sourceId === 'string' ? payload.sourceId : '';
+      const sourceId =
+        typeof payload.sourceId === "string" ? payload.sourceId : "";
       if (!sourceId) {
         return NextResponse.json(
-          { error: 'payload.sourceId is required' },
+          { error: "payload.sourceId is required" },
           { status: 400 },
         );
       }
@@ -94,18 +135,20 @@ async function handleImportAction(
       return NextResponse.json({ tables });
     }
 
-    case 'listImportFields': {
+    case "listImportFields": {
       if (!hasImportSchemaMethods(plugin)) {
         return NextResponse.json(
-          { error: 'Plugin does not support listImportFields' },
+          { error: "Plugin does not support listImportFields" },
           { status: 501 },
         );
       }
-      const sourceId = typeof payload.sourceId === 'string' ? payload.sourceId : '';
-      const tableId = typeof payload.tableId === 'string' ? payload.tableId : '';
+      const sourceId =
+        typeof payload.sourceId === "string" ? payload.sourceId : "";
+      const tableId =
+        typeof payload.tableId === "string" ? payload.tableId : "";
       if (!sourceId || !tableId) {
         return NextResponse.json(
-          { error: 'payload.sourceId and payload.tableId are required' },
+          { error: "payload.sourceId and payload.tableId are required" },
           { status: 400 },
         );
       }
@@ -113,23 +156,22 @@ async function handleImportAction(
       return NextResponse.json({ fields });
     }
 
-    case 'importTestCases': {
+    case "importTestCases": {
       const items = payload.items;
-      const fieldMapping = payload.fieldMapping as Record<string, string> | undefined;
+      const fieldMapping = payload.fieldMapping as
+        | Record<string, string>
+        | undefined;
       if (!Array.isArray(items) || items.length === 0) {
         return NextResponse.json(
-          { error: 'payload.items must be a non-empty array' },
+          { error: "payload.items must be a non-empty array" },
           { status: 400 },
         );
       }
-      const result = await plugin.importItems(
-        items.map(String),
-        fieldMapping,
-      );
+      const result = await plugin.importItems(items.map(String), fieldMapping);
       return NextResponse.json(result);
     }
 
     default:
-      return NextResponse.json({ error: 'Unreachable' }, { status: 500 });
+      return NextResponse.json({ error: "Unreachable" }, { status: 500 });
   }
 }

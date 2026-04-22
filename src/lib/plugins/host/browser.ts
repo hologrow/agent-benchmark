@@ -2,11 +2,6 @@
 import "client-only";
 import { api } from "@/lib/api";
 import type { CreateTestCaseRequest } from "@/types/api";
-import type {
-  LegacySyncFetchResult,
-  SyncTestCasesToDatabaseInput,
-  SyncTestCasesToDatabaseResult,
-} from "@/lib/plugins/types";
 import type { LegacySyncParsedTestCasePayload } from "@/lib/plugins/types";
 import { applyExternalTableSyncWithPersistence } from "./apply-external-sync";
 import type { PluginHostContext, HostBridge } from "./types";
@@ -28,7 +23,7 @@ function rowToCreateRequest(
 }
 
 function createBrowserBridge(): HostBridge {
-  return {
+  const bridge: HostBridge = {
     async getAllTestCasesForSync() {
       const { testCases } = await api.testCases.list();
       return testCases.map((tc) => ({ id: tc.id, test_id: tc.test_id }));
@@ -54,25 +49,16 @@ function createBrowserBridge(): HostBridge {
         testCaseCount: testCaseIds.length,
       };
     },
+    async persistAfterFetch(input, fetchResult) {
+      return applyExternalTableSyncWithPersistence(bridge, input, fetchResult);
+    },
   };
+  return bridge;
 }
 
 /** 默认单例端口（可按需在测试中替换为自定义 host）。 */
 const browserBridge = createBrowserBridge();
 
 export function createBrowserPluginHostContext(): PluginHostContext {
-  return {
-    bridge: browserBridge,
-    externalTableSync: {
-      persistAfterFetch: (
-        input: SyncTestCasesToDatabaseInput,
-        fetchResult: LegacySyncFetchResult,
-      ): Promise<SyncTestCasesToDatabaseResult> =>
-        applyExternalTableSyncWithPersistence(
-          browserBridge,
-          input,
-          fetchResult,
-        ),
-    },
-  };
+  return { bridge: browserBridge };
 }

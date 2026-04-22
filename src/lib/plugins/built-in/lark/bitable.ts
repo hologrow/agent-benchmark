@@ -12,7 +12,10 @@ import type {
   SyncTestCasesToDatabaseInput,
 } from "../../types";
 
-export type { LegacySyncFetchResult, LegacySyncParsedTestCasePayload } from "../../types";
+export type {
+  LegacySyncFetchResult,
+  LegacySyncParsedTestCasePayload,
+} from "../../types";
 
 export const LEGACY_SYNC_SYSTEM_FIELDS: LegacySyncSystemField[] = [
   { key: "input", label: "Input", required: true },
@@ -96,28 +99,6 @@ function parseRecordToTestCase(
     category,
     how,
   };
-}
-
-/** 无集成配置时使用环境变量中的 LARK_* / FEISHU_*。 */
-export function createEnvBasedLarkClient(): Client {
-  const appId = process.env.LARK_APP_ID || process.env.FEISHU_APP_ID;
-  const appSecret =
-    process.env.LARK_APP_SECRET || process.env.FEISHU_APP_SECRET;
-
-  if (!appId || !appSecret) {
-    throw new Error(
-      "LARK_APP_ID and LARK_APP_SECRET (or FEISHU_APP_ID and FEISHU_APP_SECRET) must be set when integration credentials are missing",
-    );
-  }
-
-  const domain =
-    process.env.LARK_APP_TYPE === "lark" ? Domain.Lark : Domain.Feishu;
-
-  return new Client({
-    appId,
-    appSecret,
-    domain,
-  });
 }
 
 export async function runLegacySyncCatalog(

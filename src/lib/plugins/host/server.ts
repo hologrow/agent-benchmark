@@ -9,7 +9,7 @@ import { applyExternalTableSyncWithPersistence } from "./apply-external-sync";
 import type { PluginHostContext, HostBridge } from "./types";
 
 function createServerBridge(): HostBridge {
-  return {
+  const bridge: HostBridge = {
     async getAllTestCasesForSync() {
       return getAllTestCases().map((tc) => ({
         id: tc.id,
@@ -31,17 +31,15 @@ function createServerBridge(): HostBridge {
         testCaseCount: testCaseIds.length,
       };
     },
+    async persistAfterFetch(input, fetchResult) {
+      return applyExternalTableSyncWithPersistence(bridge, input, fetchResult);
+    },
   };
+  return bridge;
 }
 
 const serverBridge = createServerBridge();
 
 export function createServerPluginHostContext(): PluginHostContext {
-  return {
-    bridge: serverBridge,
-    externalTableSync: {
-      persistAfterFetch: (input, fetchResult) =>
-        applyExternalTableSyncWithPersistence(serverBridge, input, fetchResult),
-    },
-  };
+  return { bridge: serverBridge };
 }

@@ -10,7 +10,7 @@ import type {
   SyncTestCasesToDatabaseResult,
 } from "@/lib/plugins/types";
 
-/** 外部表同步落库所需的低层端口（由宿主在 server/browser 分别实现）。 */
+/** 外部表同步：逐条 CRUD + 可选测试集创建，以及拉取结果后的批量落库（由宿主在 server/browser 分别实现）。 */
 export interface HostBridge {
   getAllTestCasesForSync: () => Promise<Array<{ id: number; test_id: string }>>;
   createTestCase: (
@@ -29,6 +29,10 @@ export interface HostBridge {
     },
     testCaseIds: number[],
   ) => Promise<{ id: number; name: string; testCaseCount: number }>;
+  persistAfterFetch(
+    input: SyncTestCasesToDatabaseInput,
+    fetchResult: LegacySyncFetchResult,
+  ): Promise<SyncTestCasesToDatabaseResult>;
 }
 
 /**
@@ -37,10 +41,4 @@ export interface HostBridge {
  */
 export interface PluginHostContext {
   bridge: HostBridge;
-  externalTableSync: {
-    persistAfterFetch(
-      input: SyncTestCasesToDatabaseInput,
-      fetchResult: LegacySyncFetchResult,
-    ): Promise<SyncTestCasesToDatabaseResult>;
-  };
 }
