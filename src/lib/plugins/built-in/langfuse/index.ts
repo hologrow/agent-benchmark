@@ -5,11 +5,7 @@
  */
 
 import { LangfuseClient } from "@langfuse/client";
-import {
-  BasePlugin,
-  Capability,
-  type CapabilityInterfaces,
-} from "../../";
+import { BasePlugin, Capability, type CapabilityInterfaces } from "../../";
 import type { IPlugin } from "../../types";
 
 interface LangfuseConfig {
@@ -30,7 +26,8 @@ export class LangfusePlugin extends BasePlugin {
     super({
       id: "langfuse",
       name: "Langfuse",
-      description: "Langfuse Trace tracking service for monitoring and analyzing AI Agent execution",
+      description:
+        "Langfuse Trace tracking service for monitoring and analyzing AI Agent execution",
       version: "1.0.0",
       author: "Benchmark Platform",
       icon: "/langfuse.png",
@@ -41,7 +38,8 @@ export class LangfusePlugin extends BasePlugin {
           type: "url",
           required: true,
           defaultValue: "https://cloud.langfuse.com",
-          description: "Langfuse service URL, keep default for cloud version, use custom domain for self-hosted",
+          description:
+            "Langfuse service URL, keep default for cloud version, use custom domain for self-hosted",
         },
         {
           name: "publicKey",
@@ -170,7 +168,7 @@ export class LangfusePlugin extends BasePlugin {
   }
 
   private async _getTrace(
-    traceId: string
+    traceId: string,
   ): Promise<{ traceId: string; traceContent: string; url?: string } | null> {
     try {
       const traceContent = await this.fetchTraceContent(traceId);
@@ -195,48 +193,40 @@ export class LangfusePlugin extends BasePlugin {
     const trace = await client.api.trace.get(traceId);
 
     const content: string[] = [];
-    content.push("=== Langfuse Trace ===");
-    content.push(`Trace ID: ${trace.id}`);
-    content.push(`Name: ${trace.name || "N/A"}`);
-    content.push(`Timestamp: ${trace.timestamp || "N/A"}`);
-    content.push("");
-
-    if (trace.input) {
-      content.push("--- Input ---");
-      content.push(
-        typeof trace.input === "object"
-          ? JSON.stringify(trace.input, null, 2)
-          : String(trace.input)
-      );
-      content.push("");
-    }
 
     if (trace.output) {
-      content.push("--- Output ---");
+      content.push("--- Real Output ---");
       content.push(
         typeof trace.output === "object"
           ? JSON.stringify(trace.output, null, 2)
-          : String(trace.output)
+          : String(trace.output),
       );
       content.push("");
     }
 
     // Add observations
-    const observations = (trace as { observations?: unknown[] }).observations || [];
+    const rawObservations = ((trace as { observations?: unknown[] })
+      .observations || []) as {
+      id?: string;
+      name?: string;
+      type?: string;
+      input?: unknown;
+      output?: unknown;
+      startTime?: string;
+      endTime?: string;
+    }[];
+
+    // only trace tool call
+    // type: "GENERATION", "SPAN", "EVENT", "AGENT", "TOOL", "CHAIN", "RETRIEVER", "EVALUATOR", "EMBEDDING", "GUARDRAIL"
+    const observations = rawObservations.filter((item) => {
+      return item.type === "TOOL";
+    });
+
     if (observations.length > 0) {
-      content.push(`--- Execution Steps (${observations.length} observations) ---`);
       for (let i = 0; i < observations.length; i++) {
-        const obs = observations[i] as {
-          id?: string;
-          name?: string;
-          type?: string;
-          input?: unknown;
-          output?: unknown;
-          startTime?: string;
-          endTime?: string;
-        };
+        const obs = observations[i];
         content.push(
-          `\nStep ${i + 1} [${obs.type || "N/A"}]: ${obs.name || "N/A"}`
+          `\nStep ${i + 1} [${obs.type || "N/A"}]: ${obs.name || "N/A"}`,
         );
         if (obs.startTime) content.push(`  Start: ${obs.startTime}`);
         if (obs.endTime) content.push(`  End: ${obs.endTime}`);
@@ -249,7 +239,7 @@ export class LangfusePlugin extends BasePlugin {
             `  Input:\n${inputStr
               .split("\n")
               .map((l) => "    " + l)
-              .join("\n")}`
+              .join("\n")}`,
           );
         }
         if (obs.output) {
@@ -261,7 +251,7 @@ export class LangfusePlugin extends BasePlugin {
             `  Output:\n${outputStr
               .split("\n")
               .map((l) => "    " + l)
-              .join("\n")}`
+              .join("\n")}`,
           );
         }
       }
