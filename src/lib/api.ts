@@ -51,56 +51,15 @@ import type {
   ListIntegrationsResponse,
   DiscoverPluginsResponse,
   ListImportSourcesResponse,
-  ListLarkTablesResponse,
-  ListLarkFieldsResponse,
   ImportTestCasesResponse,
   StartExecutionResponse,
   StopExecutionResponse,
   ExecutionHealthResponse,
   SuccessResponse,
 } from '@/types/api';
+import { apiRequest } from './api-request';
 
-// API Error class for typed error handling
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public data?: unknown
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
-
-// Base request handler with type safety
-async function apiRequest<T>(
-  url: string,
-  options?: RequestInit
-): Promise<T> {
-  const response = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-    ...options,
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new ApiError(
-      errorData.error || `HTTP ${response.status}`,
-      response.status,
-      errorData
-    );
-  }
-
-  // Handle empty responses
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return response.json() as Promise<T>;
-}
+export { ApiError } from './api-request';
 
 // ==================== Test Sets API ====================
 
@@ -518,22 +477,6 @@ export const pluginsApi = {
 
   importSources: (pluginId: string): Promise<ListImportSourcesResponse> =>
     invokePlugin(pluginId, { action: 'listImportSources' }),
-
-  importTables: (pluginId: string, sourceId: string): Promise<ListLarkTablesResponse> =>
-    invokePlugin(pluginId, {
-      action: 'listImportTables',
-      payload: { sourceId },
-    }),
-
-  importFields: (
-    pluginId: string,
-    sourceId: string,
-    tableId: string,
-  ): Promise<ListLarkFieldsResponse> =>
-    invokePlugin(pluginId, {
-      action: 'listImportFields',
-      payload: { sourceId, tableId },
-    }),
 
   importTestCases: (
     pluginId: string,

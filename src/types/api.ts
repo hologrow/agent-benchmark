@@ -307,44 +307,14 @@ export interface ImportSourceRow {
   name: string;
 }
 
-export interface LarkTable {
-  id: string;
-  name: string;
-}
-
-export interface LarkField {
-  id: string;
-  name: string;
-  type: string;
-}
-
 export interface ListImportSourcesResponse {
   sources: ImportSourceRow[];
-}
-
-/** @deprecated Use ImportSourceRow */
-export type LarkBase = ImportSourceRow;
-
-/** @deprecated Legacy shape with `bases`; prefer ListImportSourcesResponse */
-export interface ListLarkBasesResponse {
-  bases: ImportSourceRow[];
-}
-
-export interface ListLarkTablesResponse {
-  tables: LarkTable[];
-}
-
-export interface ListLarkFieldsResponse {
-  fields: LarkField[];
 }
 
 export interface ImportTestCasesRequest {
   items: string[]; // e.g. "sourceId/tableId"
   fieldMapping?: Record<string, string>;
 }
-
-/** @deprecated Use ImportTestCasesRequest */
-export type LarkImportRequest = ImportTestCasesRequest;
 
 export interface ImportTestCasesResponse {
   success: boolean;
@@ -360,9 +330,6 @@ export interface ImportTestCasesResponse {
   }>;
   error?: string;
 }
-
-/** @deprecated Use ImportTestCasesResponse */
-export type LarkImportResponse = ImportTestCasesResponse;
 
 /**
  * Single endpoint: POST /api/plugins/:pluginId

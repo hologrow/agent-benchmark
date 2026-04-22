@@ -23,8 +23,13 @@ import {
 import * as LucideIcons from 'lucide-react';
 import { Loader2, AlertCircle, HelpCircle, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
-import { api } from '@/lib/api';
-import type { ImportButtonUI, LarkField, LarkTable } from '@/types/api';
+import type { ImportButtonUI } from '@/types/api';
+import type { LarkField, LarkTable } from './api-types';
+import {
+  larkLegacySyncToDatabase,
+  larkListImportFields,
+  larkListImportTables,
+} from './browser-api';
 
 /** Lark Bitable 向导表单 props */
 export type LarkBitableImportFormProps = {
@@ -86,7 +91,7 @@ export function LarkBitableImportForm({
     setLoading(true);
     setError(null);
     try {
-      const data = await api.plugins.importTables(pluginId, appId);
+      const data = await larkListImportTables(pluginId, appId);
       setTables(data.tables || []);
       if (data.tables?.length > 0) {
         setSelectedTableId(data.tables[0].id);
@@ -112,7 +117,7 @@ export function LarkBitableImportForm({
     setLoading(true);
     setError(null);
     try {
-      const data = await api.plugins.importFields(
+      const data = await larkListImportFields(
         pluginId,
         appId,
         selectedTableId,
@@ -160,7 +165,7 @@ export function LarkBitableImportForm({
     setImporting(true);
     try {
       /** 必须走 `/api/test-cases/sync` 落库；`plugins.importTestCases` / `importItems` 只拉数不落库。 */
-      const result = await api.testCases.legacySyncToDatabase(pluginId, {
+      const result = await larkLegacySyncToDatabase(pluginId, {
         appToken: appId,
         tableId: selectedTableId,
         columnMapping: fieldMapping,

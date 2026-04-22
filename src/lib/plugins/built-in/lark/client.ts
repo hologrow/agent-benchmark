@@ -5,8 +5,8 @@
  * Node 侧 Bitable 能力见同目录 `index.ts`（LarkPlugin）与 `bitable.ts`。
  */
 
-import { api } from '@/lib/api';
 import type { SyncTestCasesToDatabaseInput } from '@/lib/plugins/types';
+import { larkLegacySyncFetchOnly } from './browser-api';
 import type { PluginHostContext } from '@/lib/plugins/host';
 import { createBrowserPluginHostContext } from '@/lib/plugins/host/browser';
 
@@ -20,10 +20,7 @@ export class LarkClientRuntime {
     input: SyncTestCasesToDatabaseInput,
     pluginId: string = PLUGIN_ID,
   ) {
-    const { fetchResult } = await api.testCases.legacySyncFetchOnly(
-      pluginId,
-      input,
-    );
+    const { fetchResult } = await larkLegacySyncFetchOnly(pluginId, input);
     return this.host.externalTableSync.persistAfterFetch(input, fetchResult);
   }
 }

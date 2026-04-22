@@ -1,6 +1,6 @@
 /**
  * Lark/Feishu — **服务端注册**：`LarkPlugin` + `./bitable`（Lark SDK，供 API/registry 使用）。
- * **默认开发者入口在浏览器**：同目录 `client.ts`、`import-dialog.tsx`（`openLarkBitableImportDialog` 等）。
+ * **浏览器**：`browser-api.ts`（REST）、`client.ts`（宿主落库）、`import-dialog.tsx`（命令式弹窗）。
  */
 
 import { Client, Domain } from "@larksuiteoapi/node-sdk";
@@ -526,3 +526,5 @@ export const builtInPluginEntry: { id: string; create: () => IPlugin } = {
   id: "lark",
   create: () => new LarkPlugin(),
 };
+
+export type * from "./api-types";
