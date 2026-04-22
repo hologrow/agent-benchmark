@@ -1,23 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPlugin } from "@/lib/plugins/route-utils";
+import { pluginRegistry } from "@/lib/plugins";
 import { invokePluginHttpHandler } from "@/lib/plugins/registerRoutes";
-import {
-  hasImportSchemaMethods,
-  type ImportTestCasesPlugin,
-} from "@/lib/plugins/types";
-
-const IMPORT_ROUTES = [
-  "listImportSources",
-  "listImportTables",
-  "listImportFields",
-  "importTestCases",
-] as const;
-
-type ImportRoute = (typeof IMPORT_ROUTES)[number];
-
-function isImportRoute(s: string): s is ImportRoute {
-  return (IMPORT_ROUTES as readonly string[]).includes(s);
-}
+import { IPlugin } from "@/lib/plugins/types";
 
 async function parseJsonBody(request: NextRequest): Promise<unknown> {
   try {
@@ -52,6 +37,8 @@ export async function POST(
       {
         error: 'Missing non-empty "route" in body',
         examples: [
+          "testConnection",
+          "trace.searchTraces",
           "listImportTables",
           "listImportFields",
           "bitable.syncToTestCases",
@@ -77,16 +64,41 @@ export async function POST(
       return prepared.response;
     }
 
+    if (route === "testConnection") {
+      const payload =
+        bodyObj.payload !== undefined &&
+        typeof bodyObj.payload === "object" &&
+        bodyObj.payload !== null &&
+        !Array.isArray(bodyObj.payload)
+          ? (bodyObj.payload as Record<string, unknown>)
+          : {};
+      prepared.plugin.setConfig(payload);
+      try {
+        const result = await pluginRegistry.testConnection(pluginId);
+        return NextResponse.json(result);
+      } catch (error) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `Test failed: ${error instanceof Error ? error.message : String(error)}`,
+          },
+          { status: 500 },
+        );
+      }
+    }
+
     const payload = bodyObj.payload ?? {};
 
-    if (!isImportRoute(route)) {
+    if (!pluginRegistry.isEnabled(pluginId)) {
       return NextResponse.json(
-        { error: `Unknown route: ${route}`, pluginId },
-        { status: 404 },
+        {
+          error: "Plugin is not enabled — configure it in Integrations",
+        },
+        { status: 400 },
       );
     }
 
-    return await handleImportRoute(prepared.plugin, route, payload);
+    return await handleImportRoute(prepared.plugin, route as any, payload);
   } catch (error) {
     console.error(`[plugins/${pluginId}]`, error);
     return NextResponse.json(
@@ -97,29 +109,17 @@ export async function POST(
 }
 
 async function handleImportRoute(
-  plugin: ImportTestCasesPlugin,
-  route: ImportRoute,
+  plugin: IPlugin,
+  route: string,
   payload: Record<string, unknown>,
 ): Promise<NextResponse> {
   switch (route) {
     case "listImportSources": {
-      if (!hasImportSchemaMethods(plugin)) {
-        return NextResponse.json(
-          { error: "Plugin does not support listImportSources" },
-          { status: 501 },
-        );
-      }
-      const sources = await plugin.listImportSources();
+      const sources = await (plugin as any).listImportSources();
       return NextResponse.json({ sources });
     }
 
     case "listImportTables": {
-      if (!hasImportSchemaMethods(plugin)) {
-        return NextResponse.json(
-          { error: "Plugin does not support listImportTables" },
-          { status: 501 },
-        );
-      }
       const sourceId =
         typeof payload.sourceId === "string" ? payload.sourceId : "";
       if (!sourceId) {
@@ -128,17 +128,12 @@ async function handleImportRoute(
           { status: 400 },
         );
       }
-      const tables = await plugin.listImportTables(sourceId);
+      // FIXME: plugin
+      const tables = await (plugin as any).listImportTables(sourceId);
       return NextResponse.json({ tables });
     }
 
     case "listImportFields": {
-      if (!hasImportSchemaMethods(plugin)) {
-        return NextResponse.json(
-          { error: "Plugin does not support listImportFields" },
-          { status: 501 },
-        );
-      }
       const sourceId =
         typeof payload.sourceId === "string" ? payload.sourceId : "";
       const tableId =
@@ -149,7 +144,7 @@ async function handleImportRoute(
           { status: 400 },
         );
       }
-      const fields = await plugin.listImportFields(sourceId, tableId);
+      const fields = await (plugin as any).listImportFields(sourceId, tableId);
       return NextResponse.json({ fields });
     }
 
@@ -164,7 +159,10 @@ async function handleImportRoute(
           { status: 400 },
         );
       }
-      const result = await plugin.importItems(items.map(String), fieldMapping);
+      const result = await (plugin as any).importItems(
+        items.map(String),
+        fieldMapping,
+      );
       return NextResponse.json(result);
     }
 

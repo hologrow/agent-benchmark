@@ -146,7 +146,10 @@ export function IntegrationsManagement({
     toast.info("Testing connection...");
 
     try {
-      const result = await api.integrations.testConnection(currentPlugin.id);
+      const result = await api.integrations.testConnection(
+        currentPlugin.id,
+        currentConfig as Record<string, unknown>,
+      );
 
       if (result.success) {
         toast.success(result.message || "Connection test successful");

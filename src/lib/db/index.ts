@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { execFileSync } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "path";
 
 function resolveDbPath(): string {
@@ -12,6 +12,49 @@ function resolveDbPath(): string {
 const DB_PATH = resolveDbPath();
 
 let db: Database.Database | null = null;
+
+/**
+ * DB was created before Alembic (schema.sql / old migrator): tables exist but
+ * `alembic_version` is missing → `upgrade head` would try CREATE TABLE again.
+ * Stamp current head once so Alembic skips already-present schema.
+ */
+function maybeStampLegacyDatabase(dbPath: string) {
+  if (!existsSync(dbPath)) return;
+  const probe = new Database(dbPath, { readonly: true });
+  try {
+    const hasAgents = probe
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agents'",
+      )
+      .get();
+    if (!hasAgents) return;
+
+    const hasVersionTable = probe
+      .prepare(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'alembic_version'",
+      )
+      .get();
+    let hasRevision = false;
+    if (hasVersionTable) {
+      const row = probe
+        .prepare("SELECT version_num FROM alembic_version LIMIT 1")
+        .get() as { version_num?: string } | undefined;
+      hasRevision = Boolean(row?.version_num);
+    }
+    if (hasRevision) return;
+
+    console.log(
+      "[Database] Existing tables found without alembic_version; stamping head (one-time legacy bridge)",
+    );
+    execFileSync("uv", ["run", "alembic", "stamp", "head"], {
+      cwd: process.cwd(),
+      stdio: "inherit",
+      env: { ...process.env, DATABASE_PATH: dbPath },
+    });
+  } finally {
+    probe.close();
+  }
+}
 
 function runAlembicUpgrade(dbPath: string) {
   try {
@@ -32,6 +75,7 @@ function runAlembicUpgrade(dbPath: string) {
 export function getDatabase(): Database.Database {
   if (!db) {
     mkdirSync(dirname(DB_PATH), { recursive: true });
+    maybeStampLegacyDatabase(DB_PATH);
     runAlembicUpgrade(DB_PATH);
     db = new Database(DB_PATH);
     db.pragma("journal_mode = WAL");

@@ -48,12 +48,11 @@ export abstract class BasePlugin implements IPlugin {
     return this.metadata.capabilities.includes(capability);
   }
 
-  // Optional methods, subclasses can override
+  // Optional lifecycle hooks
   async initialize?(): Promise<void> {}
   async destroy?(): Promise<void> {}
-  async testConnection?(): Promise<{ success: boolean; message?: string }> {
-    return { success: true, message: 'Connection test not implemented' };
-  }
+
+  abstract testConnection(): Promise<{ success: boolean; message?: string }>;
 }
 
 /**

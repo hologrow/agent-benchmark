@@ -337,53 +337,11 @@ export interface IPlugin {
   /** Destroy plugin */
   destroy?(): Promise<void>;
 
-  /** Test connection */
-  testConnection?(): Promise<{ success: boolean; message?: string }>;
+  /** Test connection (integration / credentials); every plugin must implement. */
+  testConnection(): Promise<{ success: boolean; message?: string }>;
 
   /** Check if supports a capability */
   hasCapability(capability: Capability): boolean;
-}
-
-/**
- * Plugin that implements the import:test-cases capability surface (used by discover API).
- */
-export type ImportTestCasesPlugin = IPlugin &
-  CapabilityType<Capability.IMPORT_TEST_CASES>;
-
-/**
- * Runtime guard: metadata claims IMPORT_TEST_CASES and required methods exist.
- */
-export function isImportTestCasesPlugin(
-  plugin: IPlugin,
-): plugin is ImportTestCasesPlugin {
-  if (!plugin.hasCapability(Capability.IMPORT_TEST_CASES)) {
-    return false;
-  }
-  const candidate = plugin as IPlugin &
-    Partial<CapabilityType<Capability.IMPORT_TEST_CASES>>;
-  return (
-    typeof candidate.getImportButtonUI === "function" &&
-    typeof candidate.getImportDialog === "function"
-  );
-}
-
-/** Plugin exposes import wizard schema APIs (bases/tables/fields). */
-export function hasImportSchemaMethods(
-  plugin: IPlugin,
-): plugin is ImportTestCasesPlugin &
-  Required<
-    Pick<
-      CapabilityType<Capability.IMPORT_TEST_CASES>,
-      "listImportSources" | "listImportTables" | "listImportFields"
-    >
-  > {
-  if (!isImportTestCasesPlugin(plugin)) return false;
-  const c = plugin as ImportTestCasesPlugin;
-  return (
-    typeof c.listImportSources === "function" &&
-    typeof c.listImportTables === "function" &&
-    typeof c.listImportFields === "function"
-  );
 }
 
 /**

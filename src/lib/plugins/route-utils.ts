@@ -2,22 +2,16 @@ import { NextResponse } from "next/server";
 import { pluginRegistry } from "@/lib/plugins/registry";
 import { ensureBuiltInPluginsRegistered } from "@/lib/plugins/loader";
 import { getIntegrationByType } from "@/lib/db";
-import {
-  type ImportTestCasesPlugin,
-  isImportTestCasesPlugin,
-} from "@/lib/plugins/types";
+import { type IPlugin } from "@/lib/plugins/types";
 
 export type PreparePluginError =
   | { ok: false; response: NextResponse }
   | {
       ok: true;
-      plugin: ImportTestCasesPlugin;
+      plugin: IPlugin;
     };
 
-/**
- * Load integration config into the registry and resolve an import-capable plugin by id.
- */
-export function prepareImportPlugin(pluginId: string): PreparePluginError {
+function preparePlugin(pluginId: string): PreparePluginError {
   ensureBuiltInPluginsRegistered();
 
   const integration = getIntegrationByType(pluginId);
@@ -31,7 +25,7 @@ export function prepareImportPlugin(pluginId: string): PreparePluginError {
   }
 
   const raw = pluginRegistry.getPlugin(pluginId);
-  if (!raw || !isImportTestCasesPlugin(raw)) {
+  if (!raw) {
     return {
       ok: false,
       response: NextResponse.json(
@@ -58,5 +52,5 @@ export function prepareImportPlugin(pluginId: string): PreparePluginError {
    TODO: REMOVE ME
  */
 export function getPlugin(pluginId: string): PreparePluginError {
-  return prepareImportPlugin(pluginId);
+  return preparePlugin(pluginId);
 }

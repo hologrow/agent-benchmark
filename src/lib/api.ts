@@ -318,12 +318,19 @@ export const integrationsApi = {
     }),
 
   /**
-   * Test integration connection
+   * Test integration connection (sends current config JSON; server applies via plugin.setConfig).
    */
-  testConnection: (type: string): Promise<{ success: boolean; message?: string }> =>
-    apiRequest<{ success: boolean; message?: string }>(`/api/integrations/${type}/test`, {
-      method: 'POST',
-    }),
+  testConnection: (
+    type: string,
+    config: Record<string, unknown> = {},
+  ): Promise<{ success: boolean; message?: string }> =>
+    apiRequest<{ success: boolean; message?: string }>(
+      `/api/plugins/${encodeURIComponent(type)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ route: 'testConnection', payload: config }),
+      },
+    ),
 };
 
 // ==================== Plugins API ====================
