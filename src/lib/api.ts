@@ -24,11 +24,15 @@ import type {
   CreateTestSetRequest,
   UpdateTestSetRequest,
   CreateTestCaseRequest,
+  UpdateTestCaseRequest,
   CreateBenchmarkRequest,
+  UpdateBenchmarkRequest,
   CreateAgentRequest,
   UpdateAgentRequest,
   CreateModelRequest,
+  UpdateModelRequest,
   CreateEvaluatorRequest,
+  UpdateEvaluatorRequest,
   UpdateIntegrationRequest,
   ImportTestCasesRequest,
   PluginImportCommand,
@@ -124,7 +128,7 @@ export const testCasesApi = {
   /**
    * Update a test case
    */
-  update: (id: number, data: Partial<CreateTestCaseRequest>): Promise<CreateTestCaseResponse> =>
+  update: (id: number, data: UpdateTestCaseRequest): Promise<CreateTestCaseResponse> =>
     apiRequest<CreateTestCaseResponse>(`/api/test-cases/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -214,7 +218,7 @@ export const benchmarksApi = {
   /**
    * Update a benchmark
    */
-  update: (id: number, data: Partial<CreateBenchmarkRequest>): Promise<CreateBenchmarkResponse> =>
+  update: (id: number, data: UpdateBenchmarkRequest): Promise<CreateBenchmarkResponse> =>
     apiRequest<CreateBenchmarkResponse>(`/api/benchmarks/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -360,7 +364,7 @@ export const modelsApi = {
   /**
    * Update a model
    */
-  update: (id: number, data: Partial<CreateModelRequest>): Promise<CreateModelResponse> =>
+  update: (id: number, data: UpdateModelRequest): Promise<CreateModelResponse> =>
     apiRequest<CreateModelResponse>(`/api/models/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -402,7 +406,7 @@ export const evaluatorsApi = {
   /**
    * Update an evaluator
    */
-  update: (id: number, data: Partial<CreateEvaluatorRequest>): Promise<CreateEvaluatorResponse> =>
+  update: (id: number, data: UpdateEvaluatorRequest): Promise<CreateEvaluatorResponse> =>
     apiRequest<CreateEvaluatorResponse>(`/api/evaluators/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),

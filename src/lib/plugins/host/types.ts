@@ -8,7 +8,7 @@ import type {
   LegacySyncParsedTestCasePayload,
   SyncTestCasesToDatabaseInput,
   SyncTestCasesToDatabaseResult,
-} from '@/lib/plugins/types';
+} from "@/lib/plugins/types";
 
 /** 外部表同步落库所需的低层端口（由宿主在 server/browser 分别实现）。 */
 export interface TestCasePersistencePort {
@@ -24,7 +24,7 @@ export interface TestCasePersistencePort {
     meta: {
       name: string;
       description: string;
-      source: 'lark' | 'manual' | null;
+      source: string;
       source_url: string | null;
     },
     testCaseIds: number[],

@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -15,10 +15,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -34,9 +34,9 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+} from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Plus,
   Loader2,
@@ -46,28 +46,28 @@ import {
   Database,
   Edit,
   FolderOpen,
-} from 'lucide-react';
-import { PluginImportHeaderActions } from '@/lib/plugins/plugin-import-header-actions';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { toast } from 'sonner';
-import { formatDateLocal, formatDateTimeLocal } from '@/lib/format-datetime';
-import { api } from '@/lib/api';
-import type { TestSet, TestCase } from '@/types/api';
+} from "lucide-react";
+import { PluginImportHeaderActions } from "@/lib/plugins/plugin-import-header-actions";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+import { toast } from "sonner";
+import { formatDateLocal, formatDateTimeLocal } from "@/lib/format-datetime";
+import { api } from "@/lib/api";
+import type { TestSet, TestCase } from "@/types/api";
 
 // ==================== Types ====================
 
 // ==================== Schemas ====================
 const testSetFormSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
+  name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
-  test_case_ids: z.array(z.number()).min(1, 'Select at least one test case'),
+  test_case_ids: z.array(z.number()).min(1, "Select at least one test case"),
 });
 
 const testCaseFormSchema = z.object({
-  input: z.string().min(1, 'Input is required'),
-  expected_output: z.string().min(1, 'Expected output is required'),
+  input: z.string().min(1, "Input is required"),
+  expected_output: z.string().min(1, "Expected output is required"),
   key_points: z.string().optional(),
   forbidden_points: z.string().optional(),
   category: z.string().optional(),
@@ -80,7 +80,7 @@ type TestCaseFormData = z.infer<typeof testCaseFormSchema>;
 // ==================== Main Component ====================
 export default function TestSetsPage() {
   // Common state
-  const [activeTab, setActiveTab] = useState('test-sets');
+  const [activeTab, setActiveTab] = useState("test-sets");
   const [testSets, setTestSets] = useState<TestSet[]>([]);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,8 +106,8 @@ export default function TestSetsPage() {
   const testSetForm = useForm<TestSetFormData>({
     resolver: zodResolver(testSetFormSchema),
     defaultValues: {
-      name: '',
-      description: '',
+      name: "",
+      description: "",
       test_case_ids: [],
     },
   });
@@ -115,12 +115,12 @@ export default function TestSetsPage() {
   const testCaseForm = useForm<TestCaseFormData>({
     resolver: zodResolver(testCaseFormSchema),
     defaultValues: {
-      input: '',
-      expected_output: '',
-      key_points: '',
-      forbidden_points: '',
-      category: '',
-      how: '',
+      input: "",
+      expected_output: "",
+      key_points: "",
+      forbidden_points: "",
+      category: "",
+      how: "",
     },
   });
 
@@ -139,8 +139,8 @@ export default function TestSetsPage() {
       setTestSets(testSetsData.testSets || []);
       setTestCases(testCasesData.testCases || []);
     } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('Failed to fetch data');
+      console.error("Error fetching data:", error);
+      toast.error("Failed to fetch data");
     } finally {
       setLoading(false);
     }
@@ -152,8 +152,8 @@ export default function TestSetsPage() {
       setSelectedTestSet(data.testSet);
       setViewDialogOpen(true);
     } catch (error) {
-      console.error('Error fetching test set details:', error);
-      toast.error('Failed to fetch details');
+      console.error("Error fetching test set details:", error);
+      toast.error("Failed to fetch details");
     }
   };
 
@@ -162,17 +162,17 @@ export default function TestSetsPage() {
     try {
       await api.testSets.create({
         ...values,
-        source: 'manual',
+        source: "manual",
       });
 
-      toast.success('Test set created');
+      toast.success("Test set created");
       setCreateSetDialogOpen(false);
       testSetForm.reset();
       setSelectedTestCaseIds([]);
       fetchData();
     } catch (error) {
-      console.error('Error creating test set:', error);
-      const message = error instanceof Error ? error.message : 'Create failed';
+      console.error("Error creating test set:", error);
+      const message = error instanceof Error ? error.message : "Create failed";
       toast.error(message);
     }
   };
@@ -181,12 +181,12 @@ export default function TestSetsPage() {
     setSelectedTestCaseIds((prev) =>
       prev.includes(testCaseId)
         ? prev.filter((id) => id !== testCaseId)
-        : [...prev, testCaseId]
+        : [...prev, testCaseId],
     );
   };
 
   useEffect(() => {
-    testSetForm.setValue('test_case_ids', selectedTestCaseIds);
+    testSetForm.setValue("test_case_ids", selectedTestCaseIds);
   }, [selectedTestCaseIds, testSetForm]);
 
   const openDeleteSetDialog = (testSet: TestSet) => {
@@ -202,14 +202,17 @@ export default function TestSetsPage() {
       setEditingTestSet(fullTestSet);
       testSetForm.reset({
         name: fullTestSet.name,
-        description: fullTestSet.description || '',
-        test_case_ids: fullTestSet.test_cases?.map((tc: TestCase) => tc.id) || [],
+        description: fullTestSet.description || "",
+        test_case_ids:
+          fullTestSet.test_cases?.map((tc: TestCase) => tc.id) || [],
       });
-      setSelectedTestCaseIds(fullTestSet.test_cases?.map((tc: TestCase) => tc.id) || []);
+      setSelectedTestCaseIds(
+        fullTestSet.test_cases?.map((tc: TestCase) => tc.id) || [],
+      );
       setEditSetDialogOpen(true);
     } catch (error) {
-      console.error('Error fetching test set details:', error);
-      toast.error('Failed to fetch test set details');
+      console.error("Error fetching test set details:", error);
+      toast.error("Failed to fetch test set details");
     }
   };
 
@@ -217,20 +220,23 @@ export default function TestSetsPage() {
     if (!editingTestSet) return;
 
     try {
+      const src = editingTestSet.source;
+      const source: string = src || "manual";
+
       await api.testSets.update(editingTestSet.id, {
         ...values,
-        source: editingTestSet.source || 'manual',
+        source,
       });
 
-      toast.success('Test set updated');
+      toast.success("Test set updated");
       setEditSetDialogOpen(false);
       setEditingTestSet(null);
       testSetForm.reset();
       setSelectedTestCaseIds([]);
       fetchData();
     } catch (error) {
-      console.error('Error updating test set:', error);
-      const message = error instanceof Error ? error.message : 'Update failed';
+      console.error("Error updating test set:", error);
+      const message = error instanceof Error ? error.message : "Update failed";
       toast.error(message);
     }
   };
@@ -242,13 +248,13 @@ export default function TestSetsPage() {
     try {
       await api.testSets.delete(testSetToDelete.id);
 
-      toast.success('Test set deleted');
+      toast.success("Test set deleted");
       setDeleteSetDialogOpen(false);
       setTestSetToDelete(null);
       fetchData();
     } catch (error) {
-      console.error('Error deleting test set:', error);
-      const message = error instanceof Error ? error.message : 'Delete failed';
+      console.error("Error deleting test set:", error);
+      const message = error instanceof Error ? error.message : "Delete failed";
       toast.error(message);
     } finally {
       setDeletingSet(false);
@@ -259,11 +265,11 @@ export default function TestSetsPage() {
   const onSaveTestCase = async (values: TestCaseFormData) => {
     try {
       const keyPoints = values.key_points
-        ? JSON.stringify(values.key_points.split('\n').filter(Boolean))
-        : '[]';
+        ? JSON.stringify(values.key_points.split("\n").filter(Boolean))
+        : "[]";
       const forbiddenPoints = values.forbidden_points
-        ? JSON.stringify(values.forbidden_points.split('\n').filter(Boolean))
-        : '[]';
+        ? JSON.stringify(values.forbidden_points.split("\n").filter(Boolean))
+        : "[]";
 
       if (editingCase) {
         await api.testCases.update(editingCase.id, {
@@ -279,14 +285,14 @@ export default function TestSetsPage() {
         });
       }
 
-      toast.success(editingCase ? 'Test case updated' : 'Test case created');
+      toast.success(editingCase ? "Test case updated" : "Test case created");
       setCaseDialogOpen(false);
       testCaseForm.reset();
       setEditingCase(null);
       fetchData();
     } catch (error) {
-      console.error('Error saving test case:', error);
-      const message = error instanceof Error ? error.message : 'Save failed';
+      console.error("Error saving test case:", error);
+      const message = error instanceof Error ? error.message : "Save failed";
       toast.error(message);
     }
   };
@@ -296,10 +302,10 @@ export default function TestSetsPage() {
     testCaseForm.reset({
       input: testCase.input,
       expected_output: testCase.expected_output,
-      key_points: parseJson(testCase.key_points).join('\n'),
-      forbidden_points: parseJson(testCase.forbidden_points).join('\n'),
+      key_points: parseJson(testCase.key_points).join("\n"),
+      forbidden_points: parseJson(testCase.forbidden_points).join("\n"),
       category: testCase.category,
-      how: testCase.how || '',
+      how: testCase.how || "",
     });
     setCaseDialogOpen(true);
   };
@@ -310,13 +316,13 @@ export default function TestSetsPage() {
     try {
       await api.testCases.delete(deletingCase.id);
 
-      toast.success('Test case deleted');
+      toast.success("Test case deleted");
       setDeleteCaseDialogOpen(false);
       setDeletingCase(null);
       fetchData();
     } catch (error) {
-      console.error('Error deleting test case:', error);
-      const message = error instanceof Error ? error.message : 'Delete failed';
+      console.error("Error deleting test case:", error);
+      const message = error instanceof Error ? error.message : "Delete failed";
       toast.error(message);
     }
   };
@@ -324,12 +330,12 @@ export default function TestSetsPage() {
   const openCreateCaseDialog = () => {
     setEditingCase(null);
     testCaseForm.reset({
-      input: '',
-      expected_output: '',
-      key_points: '',
-      forbidden_points: '',
-      category: '',
-      how: '',
+      input: "",
+      expected_output: "",
+      key_points: "",
+      forbidden_points: "",
+      category: "",
+      how: "",
     });
     setCaseDialogOpen(true);
   };
@@ -344,10 +350,7 @@ export default function TestSetsPage() {
 
   // ==================== Helpers ====================
   const getSourceBadge = (source: string | null) => {
-    if (source === 'lark') {
-      return <Badge variant="default">Lark</Badge>;
-    }
-    return <Badge variant="secondary">Manual</Badge>;
+    return <Badge variant="default">{source || "Manual"}</Badge>;
   };
 
   // ==================== Render ====================
@@ -426,7 +429,7 @@ export default function TestSetsPage() {
                         </TableCell>
                         <TableCell>{getSourceBadge(testSet.source)}</TableCell>
                         <TableCell className="max-w-[300px] truncate">
-                          {testSet.description || '-'}
+                          {testSet.description || "-"}
                         </TableCell>
                         <TableCell>
                           {formatDateLocal(testSet.created_at)}
@@ -517,13 +520,15 @@ export default function TestSetsPage() {
                           title={testCase.input}
                         >
                           {testCase.input.slice(0, 50)}
-                          {testCase.input.length > 50 ? '...' : ''}
+                          {testCase.input.length > 50 ? "..." : ""}
                         </TableCell>
                         <TableCell>
                           {testCase.category ? (
-                            <Badge variant="secondary">{testCase.category}</Badge>
+                            <Badge variant="secondary">
+                              {testCase.category}
+                            </Badge>
                           ) : (
-                            '-'
+                            "-"
                           )}
                         </TableCell>
                         <TableCell
@@ -532,7 +537,7 @@ export default function TestSetsPage() {
                         >
                           {testCase.how
                             ? `${testCase.how.slice(0, 20)}...`
-                            : '-'}
+                            : "-"}
                         </TableCell>
                         <TableCell>
                           {parseJson(testCase.key_points).length}
@@ -622,8 +627,8 @@ export default function TestSetsPage() {
                       key={testCase.id}
                       className={`flex items-center gap-2 p-2 rounded transition-colors ${
                         selectedTestCaseIds.includes(testCase.id)
-                          ? 'bg-primary/10'
-                          : 'hover:bg-muted'
+                          ? "bg-primary/10"
+                          : "hover:bg-muted"
                       }`}
                     >
                       <div
@@ -633,8 +638,8 @@ export default function TestSetsPage() {
                         <CheckSquare
                           className={`h-4 w-4 ${
                             selectedTestCaseIds.includes(testCase.id)
-                              ? 'text-primary'
-                              : 'text-muted-foreground'
+                              ? "text-primary"
+                              : "text-muted-foreground"
                           }`}
                         />
                         <div>
@@ -683,7 +688,8 @@ export default function TestSetsPage() {
           <DialogHeader>
             <DialogTitle>Edit Test Set</DialogTitle>
             <DialogDescription>
-              Modify the name, description, and included test cases of the test set
+              Modify the name, description, and included test cases of the test
+              set
             </DialogDescription>
           </DialogHeader>
 
@@ -728,8 +734,8 @@ export default function TestSetsPage() {
                       key={testCase.id}
                       className={`flex items-center gap-2 p-2 rounded transition-colors ${
                         selectedTestCaseIds.includes(testCase.id)
-                          ? 'bg-primary/10'
-                          : 'hover:bg-muted'
+                          ? "bg-primary/10"
+                          : "hover:bg-muted"
                       }`}
                     >
                       <div
@@ -739,8 +745,8 @@ export default function TestSetsPage() {
                         <CheckSquare
                           className={`h-4 w-4 ${
                             selectedTestCaseIds.includes(testCase.id)
-                              ? 'text-primary'
-                              : 'text-muted-foreground'
+                              ? "text-primary"
+                              : "text-muted-foreground"
                           }`}
                         />
                         <div>
@@ -776,7 +782,11 @@ export default function TestSetsPage() {
               </div>
 
               <DialogFooter>
-                <Button variant="outline" type="button" onClick={() => setEditSetDialogOpen(false)}>
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={() => setEditSetDialogOpen(false)}
+                >
                   Cancel
                 </Button>
                 <Button type="submit">Save</Button>
@@ -792,18 +802,20 @@ export default function TestSetsPage() {
           <DialogHeader>
             <DialogTitle>{selectedTestSet?.name}</DialogTitle>
             <DialogDescription>
-              {selectedTestSet?.description || 'No description'}
+              {selectedTestSet?.description || "No description"}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="flex gap-4 text-sm text-muted-foreground">
-              <span>Source: {getSourceBadge(selectedTestSet?.source || null)}</span>
               <span>
-                Created At:{' '}
+                Source: {getSourceBadge(selectedTestSet?.source || null)}
+              </span>
+              <span>
+                Created At:{" "}
                 {selectedTestSet?.created_at
                   ? formatDateTimeLocal(selectedTestSet.created_at)
-                  : '-'}
+                  : "-"}
               </span>
             </div>
 
@@ -814,7 +826,9 @@ export default function TestSetsPage() {
               <div className="border rounded-md divide-y">
                 {selectedTestSet?.test_cases?.map((testCase, index) => (
                   <div key={testCase.id} className="p-3 flex gap-3">
-                    <span className="text-muted-foreground w-8">{index + 1}.</span>
+                    <span className="text-muted-foreground w-8">
+                      {index + 1}.
+                    </span>
                     <div>
                       <div className="font-medium">{testCase.test_id}</div>
                       <div className="text-sm text-muted-foreground">
@@ -836,15 +850,13 @@ export default function TestSetsPage() {
       </Dialog>
 
       {/* Delete Test Set Dialog */}
-      <Dialog
-        open={deleteSetDialogOpen}
-        onOpenChange={setDeleteSetDialogOpen}
-      >
+      <Dialog open={deleteSetDialogOpen} onOpenChange={setDeleteSetDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirm Delete</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete test set &quot;{testSetToDelete?.name}&quot; ?
+              Are you sure you want to delete test set &quot;
+              {testSetToDelete?.name}&quot; ?
               <br />
               This action cannot be undone.
             </DialogDescription>
@@ -883,9 +895,11 @@ export default function TestSetsPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {editingCase ? 'Edit Test Case' : 'New Test Case'}
+              {editingCase ? "Edit Test Case" : "New Test Case"}
             </DialogTitle>
-            <DialogDescription>Fill in the detailed information of the test case</DialogDescription>
+            <DialogDescription>
+              Fill in the detailed information of the test case
+            </DialogDescription>
           </DialogHeader>
 
           <Form {...testCaseForm}>
@@ -933,7 +947,8 @@ export default function TestSetsPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      Expected Output <span className="text-destructive">*</span>
+                      Expected Output{" "}
+                      <span className="text-destructive">*</span>
                     </FormLabel>
                     <FormControl>
                       <Textarea
@@ -1004,9 +1019,7 @@ export default function TestSetsPage() {
               </div>
 
               <DialogFooter>
-                <Button type="submit">
-                  {editingCase ? 'Save' : 'Create'}
-                </Button>
+                <Button type="submit">{editingCase ? "Save" : "Create"}</Button>
               </DialogFooter>
             </form>
           </Form>
@@ -1022,7 +1035,8 @@ export default function TestSetsPage() {
           <DialogHeader>
             <DialogTitle>Confirm Delete</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete test case &quot;{deletingCase?.name}&quot;? This action cannot be undone.
+              Are you sure you want to delete test case &quot;
+              {deletingCase?.name}&quot;? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1038,7 +1052,6 @@ export default function TestSetsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }

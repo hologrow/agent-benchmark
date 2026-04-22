@@ -7,11 +7,17 @@
 
 // ==================== Base Types ====================
 
+/** 持久化实体上由服务端生成、请求体不包含的字段 */
+export type ApiEntityMeta = "id" | "created_at" | "updated_at";
+
 export interface TestSet {
   id: number;
   name: string;
   description: string;
-  source: 'lark' | 'manual' | null;
+  /**
+     eg: lark, manual
+   */
+  source: string;
   source_url: string | null;
   created_at: string;
   test_cases?: TestCase[];
@@ -47,7 +53,7 @@ export interface Benchmark {
 export interface BenchmarkExecution {
   id: number;
   benchmark_id: number;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
+  status: "pending" | "running" | "completed" | "failed" | "stopped";
   progress: number;
   current_agent: string | null;
   current_test_case: string | null;
@@ -60,7 +66,7 @@ export interface Agent {
   id: number;
   name: string;
   description: string;
-  agent_type: 'openclaw' | 'hermes' | 'other';
+  agent_type: "openclaw" | "hermes" | "other";
   config_json: string;
   created_at: string;
   updated_at: string;
@@ -113,88 +119,88 @@ export interface EvaluationResult {
 
 // ==================== API Request Types ====================
 
-export interface CreateTestSetRequest {
-  name: string;
-  description?: string;
-  source?: 'lark' | 'manual';
-  source_url?: string;
-  test_case_ids: number[];
-}
+/** 创建测试集：名称 + 用例 id；`source` 比实体上更窄 */
+export type CreateTestSetRequest = Pick<TestSet, "name" | "source"> &
+  Partial<Pick<TestSet, "description" | "source_url">> & {
+    test_case_ids: number[];
+  };
 
-export interface UpdateTestSetRequest {
-  name?: string;
-  description?: string;
-  source?: 'lark' | 'manual';
-  source_url?: string;
-  test_case_ids?: number[];
-}
+export type UpdateTestSetRequest = Partial<CreateTestSetRequest>;
 
-export interface CreateTestCaseRequest {
-  test_id?: string;
-  name?: string;
-  description?: string;
-  input: string;
-  expected_output?: string;
-  key_points?: string | string[];
-  forbidden_points?: string | string[];
-  category?: string;
-  how?: string;
-}
+/**
+ * 创建用例：与 {@link TestCase} 可写字段对齐，部分在创建时可选；
+ * `key_points` / `forbidden_points` 支持表单多选（数组）。
+ */
+export type CreateTestCaseRequest = Partial<
+  Pick<
+    TestCase,
+    "test_id" | "name" | "description" | "expected_output" | "category" | "how"
+  >
+> &
+  Pick<TestCase, "input"> & {
+    key_points?: string | string[];
+    forbidden_points?: string | string[];
+  };
 
-export interface CreateBenchmarkRequest {
-  name: string;
+export type UpdateTestCaseRequest = Partial<CreateTestCaseRequest>;
+
+/**
+ * 创建 Benchmark：与 {@link Benchmark} 对齐，但 `agent_ids` / `test_case_ids` 为数组、
+ * `run_config` 为对象；`description` / `test_set_id` 在创建时可选。
+ */
+export type CreateBenchmarkRequest = Omit<
+  Benchmark,
+  | ApiEntityMeta
+  | "agent_ids"
+  | "test_case_ids"
+  | "run_config"
+  | "description"
+  | "test_set_id"
+> & {
   description?: string;
-  agent_ids: number[];
   test_set_id?: number;
+  agent_ids: number[];
   test_case_ids?: number[];
-  evaluator_id: number;
   run_config?: Record<string, unknown>;
-}
+};
 
-export interface CreateAgentRequest {
-  name: string;
-  description?: string;
-  agent_type: 'openclaw' | 'hermes' | 'other';
-  config: {
-    url?: string;
-    token?: string;
-    command?: string;
+export type UpdateBenchmarkRequest = Partial<CreateBenchmarkRequest>;
+
+/** Agent 写入体使用结构化 `config`，与实体 `config_json` 分离 */
+export type AgentConfigPayload = {
+  url?: string;
+  token?: string;
+  command?: string;
+};
+
+export type CreateAgentRequest = Pick<Agent, "name" | "agent_type"> &
+  Partial<Pick<Agent, "description">> & {
+    config: AgentConfigPayload;
   };
-}
 
-export interface UpdateAgentRequest {
-  name?: string;
-  description?: string;
-  agent_type?: 'openclaw' | 'hermes' | 'other';
-  config?: {
-    url?: string;
-    token?: string;
-    command?: string;
-  };
-}
+export type UpdateAgentRequest = Partial<CreateAgentRequest>;
 
-export interface CreateModelRequest {
-  name: string;
-  provider: string;
-  model_id: string;
-  api_key?: string;
-  base_url?: string;
-  temperature?: number;
-  max_tokens?: number;
+/** Model 创建：JSON `config` 替代实体 `config_json`；`is_default` 与 API 路由一致 */
+export type CreateModelRequest = Omit<Model, ApiEntityMeta | "config_json"> & {
   config?: Record<string, unknown>;
-}
+  is_default?: boolean;
+};
 
-export interface CreateEvaluatorRequest {
-  name: string;
+export type UpdateModelRequest = Partial<CreateModelRequest>;
+
+/** Evaluator 创建：`config` 替代 `config_json`，`description` 可选 */
+export type CreateEvaluatorRequest = Omit<
+  Evaluator,
+  ApiEntityMeta | "config_json" | "description"
+> & {
   description?: string;
-  model_id: number;
-  prompt_template: string;
-  script_path?: string;
   config?: Record<string, unknown>;
-}
+};
+
+export type UpdateEvaluatorRequest = Partial<CreateEvaluatorRequest>;
 
 export interface IntegrationConfig {
-  appType?: 'lark' | 'feishu';
+  appType?: "lark" | "feishu";
   appId?: string;
   appSecret?: string;
   publicKey?: string;
@@ -288,7 +294,7 @@ export interface ImportButtonUI {
   pluginName: string;
   label: string;
   icon: string;
-  variant?: 'default' | 'outline' | 'secondary' | 'ghost';
+  variant?: "default" | "outline" | "secondary" | "ghost";
   color?: string;
   dialog?: {
     title: string;
@@ -336,10 +342,10 @@ export interface ImportTestCasesResponse {
  * Body: { action, payload? }
  */
 export const PLUGIN_IMPORT_ACTIONS = [
-  'listImportSources',
-  'listImportTables',
-  'listImportFields',
-  'importTestCases',
+  "listImportSources",
+  "listImportTables",
+  "listImportFields",
+  "importTestCases",
 ] as const;
 
 export type PluginImportAction = (typeof PLUGIN_IMPORT_ACTIONS)[number];
@@ -361,7 +367,7 @@ export interface RLTrainingConfig {
 }
 
 export interface RLTrainingStatus {
-  status: 'idle' | 'training' | 'completed' | 'error';
+  status: "idle" | "training" | "completed" | "error";
   progress?: number;
   currentStep?: string;
   message?: string;
@@ -377,7 +383,7 @@ export interface StopExecutionResponse {
 }
 
 export interface ExecutionHealthResponse {
-  status: 'healthy' | 'unhealthy' | 'unknown';
+  status: "healthy" | "unhealthy" | "unknown";
   details?: string;
 }
 
@@ -387,4 +393,4 @@ export interface SuccessResponse {
 }
 
 // Empty response (for void returns)
-export interface EmptyResponse {}
+export type EmptyResponse = Record<string, never>;
