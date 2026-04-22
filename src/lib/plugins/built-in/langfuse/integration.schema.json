@@ -1,0 +1,35 @@
+{
+  "id": "langfuse",
+  "name": "Langfuse",
+  "description": "Trace tracking service",
+  "icon": "/langfuse.png",
+  "capabilities": ["trace:execution"],
+  "docsUrl": "https://langfuse.com",
+  "configFields": [
+    {
+      "name": "baseUrl",
+      "label": "Base URL",
+      "type": "url",
+      "required": true,
+      "defaultValue": "https://cloud.langfuse.com",
+      "placeholder": "https://cloud.langfuse.com",
+      "description": "Langfuse service URL, keep default for cloud version, fill custom domain for self-hosted"
+    },
+    {
+      "name": "publicKey",
+      "label": "Public Key",
+      "type": "text",
+      "required": true,
+      "placeholder": "pk-lf-...",
+      "description": "Public Key from Langfuse project settings"
+    },
+    {
+      "name": "secretKey",
+      "label": "Secret Key",
+      "type": "password",
+      "required": true,
+      "placeholder": "sk-lf-...",
+      "description": "Secret Key from Langfuse project settings"
+    }
+  ]
+}

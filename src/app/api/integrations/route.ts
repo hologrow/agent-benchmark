@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllIntegrations, upsertIntegrationByType } from '@/lib/db';
+import {
+  getAllIntegrations,
+  getIntegrationByType,
+  upsertIntegrationByType,
+} from '@/lib/db';
 
 // GET /api/integrations - list integrations
 export async function GET() {
@@ -19,14 +23,25 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type, name, enabled, config } = body;
+    const { enabled, config } = body;
 
-    if (!type || !name) {
+    const url = new URL(request.url);
+    const type =
+      (typeof body.type === 'string' && body.type.trim()) ||
+      url.searchParams.get('type')?.trim() ||
+      '';
+
+    if (!type) {
       return NextResponse.json(
-        { error: 'Type and name are required' },
+        { error: 'Type is required (body.type or query ?type=)' },
         { status: 400 }
       );
     }
+
+    const existing = getIntegrationByType(type);
+    const nameFromBody =
+      typeof body.name === 'string' ? body.name.trim() : '';
+    const name = nameFromBody || existing?.name?.trim() || type;
 
     const integration = upsertIntegrationByType(type, {
       name,

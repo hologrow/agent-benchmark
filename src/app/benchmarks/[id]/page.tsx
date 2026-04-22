@@ -302,7 +302,9 @@ export default function BenchmarkDetailsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Execution Records</CardTitle>
-                <CardDescription>Select execution batch to view details</CardDescription>
+                <CardDescription>
+                  Select execution batch to view details
+                </CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -423,7 +425,8 @@ function ExecutionDetails({
   };
 
   const handleStopExecution = async () => {
-    if (!confirm("Are you sure you want to force stop the current execution?")) return;
+    if (!confirm("Are you sure you want to force stop the current execution?"))
+      return;
 
     setStopping(true);
     try {
@@ -643,7 +646,7 @@ function ExecutionDetails({
             ) : (
               <>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Sync Langfuse
+                Sync Trace
               </>
             )}
           </Button>
@@ -768,7 +771,8 @@ function ExecutionDetails({
               <div className="flex items-center gap-4 text-sm flex-wrap">
                 <span>Status: {getStatusBadge(selectedResult.status)}</span>
                 <span>
-                  Execution time: {formatDuration(selectedResult.execution_time_ms)}
+                  Execution time:{" "}
+                  {formatDuration(selectedResult.execution_time_ms)}
                 </span>
                 {selectedResult.score !== null && (
                   <span
@@ -822,13 +826,17 @@ function ExecutionDetails({
               {/* Execution answer and expected output (side by side) */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <h4 className="font-semibold mb-1 text-sm">Expected Output</h4>
+                  <h4 className="font-semibold mb-1 text-sm">
+                    Expected Output
+                  </h4>
                   <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-[400px] overflow-y-auto border border-dashed border-gray-300">
                     {selectedResult.expected_output || "None"}
                   </div>
                 </div>
                 <div>
-                  <h4 className="font-semibold mb-1 text-sm">Execution Answer</h4>
+                  <h4 className="font-semibold mb-1 text-sm">
+                    Execution Answer
+                  </h4>
                   <div className="bg-muted p-3 rounded-md text-sm whitespace-pre-wrap max-h-[400px] overflow-y-auto border border-green-200">
                     {selectedResult.execution_answer ||
                       selectedResult.actual_output ||
@@ -864,7 +872,9 @@ function ExecutionDetails({
               {/* Error message */}
               {selectedResult.error_message && (
                 <div>
-                  <h4 className="font-semibold mb-2 text-red-600">Execution Error</h4>
+                  <h4 className="font-semibold mb-2 text-red-600">
+                    Execution Error
+                  </h4>
                   <div className="bg-red-50 border border-red-200 p-3 rounded-md text-sm text-red-700 whitespace-pre-wrap">
                     {selectedResult.error_message}
                   </div>

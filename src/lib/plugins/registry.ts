@@ -159,10 +159,6 @@ class PluginRegistry {
       return { success: false, message: 'Plugin does not exist' };
     }
 
-    if (!plugin.testConnection) {
-      return { success: false, message: 'This plugin does not support connection testing' };
-    }
-
     try {
       return await plugin.testConnection();
     } catch (error) {

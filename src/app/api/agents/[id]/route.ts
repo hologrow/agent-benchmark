@@ -39,7 +39,7 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, description, command, agent_type, config_json } = body;
+    const { name, description, command, agent_type, config_json, config } = body;
 
     const agent = getAgentById(parseInt(id));
     if (!agent) {
@@ -65,7 +65,11 @@ export async function PUT(
     if (command !== undefined) updateData.command = command;
     if (agent_type !== undefined) updateData.agent_type = agent_type;
     if (config_json !== undefined) {
-      updateData.config_json = typeof config_json === 'string' ? config_json : JSON.stringify(config_json);
+      updateData.config_json =
+        typeof config_json === 'string' ? config_json : JSON.stringify(config_json);
+    } else if (config !== undefined && config !== null) {
+      updateData.config_json =
+        typeof config === 'string' ? config : JSON.stringify(config);
     }
 
     const updatedAgent = updateAgent(parseInt(id), updateData);

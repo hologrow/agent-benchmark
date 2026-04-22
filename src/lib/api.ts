@@ -6,33 +6,23 @@
  */
 
 import type {
-  LegacySyncCatalogResult,
-  LegacySyncFetchResult,
-  SyncTestCasesToDatabaseInput,
-  SyncTestCasesToDatabaseResult,
-} from '@/lib/plugins/types';
-import type {
-  // Entities
-  Benchmark,
   BenchmarkExecution,
-  Agent,
-  Model,
-  Evaluator,
   Integration,
 
   // Requests
   CreateTestSetRequest,
   UpdateTestSetRequest,
   CreateTestCaseRequest,
+  UpdateTestCaseRequest,
   CreateBenchmarkRequest,
+  UpdateBenchmarkRequest,
   CreateAgentRequest,
   UpdateAgentRequest,
   CreateModelRequest,
+  UpdateModelRequest,
   CreateEvaluatorRequest,
+  UpdateEvaluatorRequest,
   UpdateIntegrationRequest,
-  ImportTestCasesRequest,
-  PluginImportCommand,
-  RLTrainingConfig,
 
   // Responses
   ListTestSetsResponse,
@@ -50,57 +40,10 @@ import type {
   CreateEvaluatorResponse,
   ListIntegrationsResponse,
   DiscoverPluginsResponse,
-  ListImportSourcesResponse,
-  ListLarkTablesResponse,
-  ListLarkFieldsResponse,
-  ImportTestCasesResponse,
   StartExecutionResponse,
-  StopExecutionResponse,
-  ExecutionHealthResponse,
   SuccessResponse,
 } from '@/types/api';
-
-// API Error class for typed error handling
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public data?: unknown
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
-
-// Base request handler with type safety
-async function apiRequest<T>(
-  url: string,
-  options?: RequestInit
-): Promise<T> {
-  const response = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-    ...options,
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new ApiError(
-      errorData.error || `HTTP ${response.status}`,
-      response.status,
-      errorData
-    );
-  }
-
-  // Handle empty responses
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return response.json() as Promise<T>;
-}
+import { apiRequest } from './api-request';
 
 // ==================== Test Sets API ====================
 
@@ -165,7 +108,7 @@ export const testCasesApi = {
   /**
    * Update a test case
    */
-  update: (id: number, data: Partial<CreateTestCaseRequest>): Promise<CreateTestCaseResponse> =>
+  update: (id: number, data: UpdateTestCaseRequest): Promise<CreateTestCaseResponse> =>
     apiRequest<CreateTestCaseResponse>(`/api/test-cases/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -177,54 +120,6 @@ export const testCasesApi = {
   delete: (id: number): Promise<SuccessResponse> =>
     apiRequest<SuccessResponse>(`/api/test-cases/${id}`, {
       method: 'DELETE',
-    }),
-
-  /**
-   * Legacy external-table sync catalog (GET /api/test-cases/sync).
-   * @param params.pluginId — e.g. `"lark"`
-   */
-  legacySyncCatalog: (params: {
-    pluginId: string;
-    appToken: string;
-    tableId?: string;
-  }): Promise<LegacySyncCatalogResult> => {
-    const q = new URLSearchParams({
-      pluginId: params.pluginId,
-      appToken: params.appToken,
-    });
-    if (params.tableId) {
-      q.set('tableId', params.tableId);
-    }
-    return apiRequest<LegacySyncCatalogResult>(
-      `/api/test-cases/sync?${q.toString()}`
-    );
-  },
-
-  /**
-   * Legacy external-table full sync into DB (POST /api/test-cases/sync).
-   * @param pluginId — e.g. `"lark"`
-   * @param payload — matches {@link SyncTestCasesToDatabaseInput} fields (pluginId is passed separately).
-   */
-  legacySyncToDatabase: (
-    pluginId: string,
-    payload: SyncTestCasesToDatabaseInput,
-  ): Promise<SyncTestCasesToDatabaseResult> =>
-    apiRequest<SyncTestCasesToDatabaseResult>('/api/test-cases/sync', {
-      method: 'POST',
-      body: JSON.stringify({ ...payload, pluginId }),
-    }),
-
-  /**
-   * Lark/Bitable fetch only (`persist: false`). Pair with browser ctx:
-   * 浏览器侧：`createBrowserPluginHostContext`（`plugins/host/browser`）→ `host.externalTableSync.persistAfterFetch`。
-   */
-  legacySyncFetchOnly: (
-    pluginId: string,
-    payload: SyncTestCasesToDatabaseInput,
-  ): Promise<{ fetchResult: LegacySyncFetchResult }> =>
-    apiRequest<{ fetchResult: LegacySyncFetchResult }>('/api/test-cases/sync', {
-      method: 'POST',
-      body: JSON.stringify({ ...payload, pluginId, persist: false }),
     }),
 };
 
@@ -238,12 +133,6 @@ export const benchmarksApi = {
     apiRequest<ListBenchmarksResponse>('/api/benchmarks'),
 
   /**
-   * Get a single benchmark by ID
-   */
-  get: (id: number): Promise<{ benchmark: Benchmark }> =>
-    apiRequest<{ benchmark: Benchmark }>(`/api/benchmarks/${id}`),
-
-  /**
    * Create a new benchmark
    */
   create: (data: CreateBenchmarkRequest): Promise<CreateBenchmarkResponse> =>
@@ -255,7 +144,7 @@ export const benchmarksApi = {
   /**
    * Update a benchmark
    */
-  update: (id: number, data: Partial<CreateBenchmarkRequest>): Promise<CreateBenchmarkResponse> =>
+  update: (id: number, data: UpdateBenchmarkRequest): Promise<CreateBenchmarkResponse> =>
     apiRequest<CreateBenchmarkResponse>(`/api/benchmarks/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -294,28 +183,6 @@ export const executionsApi = {
     apiRequest<{ details: { results: unknown[] } }>(`/api/executions/${id}`),
 
   /**
-   * Stop a running execution
-   */
-  stop: (id: number): Promise<StopExecutionResponse> =>
-    apiRequest<StopExecutionResponse>(`/api/executions/${id}/stop`, {
-      method: 'POST',
-    }),
-
-  /**
-   * Check execution health
-   */
-  checkHealth: (id: number): Promise<ExecutionHealthResponse> =>
-    apiRequest<ExecutionHealthResponse>(`/api/executions/${id}/health`),
-
-  /**
-   * Trigger evaluation for an execution
-   */
-  evaluate: (id: number): Promise<SuccessResponse> =>
-    apiRequest<SuccessResponse>(`/api/executions/${id}/evaluate`, {
-      method: 'POST',
-    }),
-
-  /**
    * Delete an execution
    */
   delete: (id: number): Promise<SuccessResponse> =>
@@ -332,12 +199,6 @@ export const agentsApi = {
    */
   list: (): Promise<ListAgentsResponse> =>
     apiRequest<ListAgentsResponse>('/api/agents'),
-
-  /**
-   * Get a single agent by ID
-   */
-  get: (id: number): Promise<{ agent: Agent }> =>
-    apiRequest<{ agent: Agent }>(`/api/agents/${id}`),
 
   /**
    * Create a new agent
@@ -364,14 +225,6 @@ export const agentsApi = {
     apiRequest<SuccessResponse>(`/api/agents/${id}`, {
       method: 'DELETE',
     }),
-
-  /**
-   * Test agent connection
-   */
-  testConnection: (id: number): Promise<{ success: boolean; message?: string }> =>
-    apiRequest<{ success: boolean; message?: string }>(`/api/agents/${id}/test`, {
-      method: 'POST',
-    }),
 };
 
 // ==================== Models API ====================
@@ -382,12 +235,6 @@ export const modelsApi = {
    */
   list: (): Promise<ListModelsResponse> =>
     apiRequest<ListModelsResponse>('/api/models'),
-
-  /**
-   * Get a single model by ID
-   */
-  get: (id: number): Promise<{ model: Model }> =>
-    apiRequest<{ model: Model }>(`/api/models/${id}`),
 
   /**
    * Create a new model
@@ -401,7 +248,7 @@ export const modelsApi = {
   /**
    * Update a model
    */
-  update: (id: number, data: Partial<CreateModelRequest>): Promise<CreateModelResponse> =>
+  update: (id: number, data: UpdateModelRequest): Promise<CreateModelResponse> =>
     apiRequest<CreateModelResponse>(`/api/models/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -426,12 +273,6 @@ export const evaluatorsApi = {
     apiRequest<ListEvaluatorsResponse>('/api/evaluators'),
 
   /**
-   * Get a single evaluator by ID
-   */
-  get: (id: number): Promise<{ evaluator: Evaluator }> =>
-    apiRequest<{ evaluator: Evaluator }>(`/api/evaluators/${id}`),
-
-  /**
    * Create a new evaluator
    */
   create: (data: CreateEvaluatorRequest): Promise<CreateEvaluatorResponse> =>
@@ -443,7 +284,7 @@ export const evaluatorsApi = {
   /**
    * Update an evaluator
    */
-  update: (id: number, data: Partial<CreateEvaluatorRequest>): Promise<CreateEvaluatorResponse> =>
+  update: (id: number, data: UpdateEvaluatorRequest): Promise<CreateEvaluatorResponse> =>
     apiRequest<CreateEvaluatorResponse>(`/api/evaluators/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -468,12 +309,6 @@ export const integrationsApi = {
     apiRequest<ListIntegrationsResponse>('/api/integrations'),
 
   /**
-   * Get a single integration by type
-   */
-  getByType: (type: string): Promise<{ integration: Integration | null }> =>
-    apiRequest<{ integration: Integration | null }>(`/api/integrations?type=${type}`),
-
-  /**
    * Update an integration
    */
   update: (type: string, data: UpdateIntegrationRequest): Promise<{ integration: Integration }> =>
@@ -483,25 +318,22 @@ export const integrationsApi = {
     }),
 
   /**
-   * Test integration connection
+   * Test integration connection (sends current config JSON; server applies via plugin.setConfig).
    */
-  testConnection: (type: string): Promise<{ success: boolean; message?: string }> =>
-    apiRequest<{ success: boolean; message?: string }>(`/api/integrations/${type}/test`, {
-      method: 'POST',
-    }),
+  testConnection: (
+    type: string,
+    config: Record<string, unknown> = {},
+  ): Promise<{ success: boolean; message?: string }> =>
+    apiRequest<{ success: boolean; message?: string }>(
+      `/api/plugins/${encodeURIComponent(type)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ route: 'testConnection', payload: config }),
+      },
+    ),
 };
 
 // ==================== Plugins API ====================
-
-async function invokePlugin<T>(
-  pluginId: string,
-  command: PluginImportCommand,
-): Promise<T> {
-  return apiRequest<T>(`/api/plugins/${encodeURIComponent(pluginId)}`, {
-    method: 'POST',
-    body: JSON.stringify(command),
-  });
-}
 
 export const pluginsApi = {
   /**
@@ -509,74 +341,11 @@ export const pluginsApi = {
    */
   discover: (): Promise<DiscoverPluginsResponse> =>
     apiRequest<DiscoverPluginsResponse>('/api/plugins/discover'),
-
-  /**
-   * Single route for all import-plugin operations (action + payload).
-   * POST /api/plugins/:pluginId — body: { action, payload? }
-   */
-  invoke: invokePlugin,
-
-  importSources: (pluginId: string): Promise<ListImportSourcesResponse> =>
-    invokePlugin(pluginId, { action: 'listImportSources' }),
-
-  importTables: (pluginId: string, sourceId: string): Promise<ListLarkTablesResponse> =>
-    invokePlugin(pluginId, {
-      action: 'listImportTables',
-      payload: { sourceId },
-    }),
-
-  importFields: (
-    pluginId: string,
-    sourceId: string,
-    tableId: string,
-  ): Promise<ListLarkFieldsResponse> =>
-    invokePlugin(pluginId, {
-      action: 'listImportFields',
-      payload: { sourceId, tableId },
-    }),
-
-  importTestCases: (
-    pluginId: string,
-    data: ImportTestCasesRequest,
-  ): Promise<ImportTestCasesResponse> =>
-    invokePlugin(pluginId, {
-      action: 'importTestCases',
-      payload: { items: data.items, fieldMapping: data.fieldMapping },
-    }),
 };
 
 // ==================== RL Training API ====================
 
 export const rlTrainingApi = {
-  /**
-   * Get RL training status
-   */
-  getStatus: (): Promise<{ status: string; config?: RLTrainingConfig; message?: string }> =>
-    apiRequest<{ status: string; config?: RLTrainingConfig; message?: string }>('/api/rl-training'),
-
-  /**
-   * Start RL training
-   */
-  start: (config: RLTrainingConfig): Promise<{ success: boolean; message?: string }> =>
-    apiRequest<{ success: boolean; message?: string }>('/api/rl-training', {
-      method: 'POST',
-      body: JSON.stringify(config),
-    }),
-
-  /**
-   * Stop RL training
-   */
-  stop: (): Promise<{ success: boolean; message?: string }> =>
-    apiRequest<{ success: boolean; message?: string }>('/api/rl-training', {
-      method: 'DELETE',
-    }),
-
-  /**
-   * Get available RL agents
-   */
-  getAgents: (): Promise<{ agents: Array<{ id: string; name: string; description: string }> }> =>
-    apiRequest<{ agents: Array<{ id: string; name: string; description: string }> }>('/api/rl-training/agent'),
-
   /**
    * Generate teacher response using LLM
    */
@@ -596,18 +365,6 @@ export const rlTrainingApi = {
     }),
 };
 
-// ==================== Results API ====================
-
-export const resultsApi = {
-  /**
-   * Diagnose a result
-   */
-  diagnose: (id: number): Promise<{ diagnosis: string }> =>
-    apiRequest<{ diagnosis: string }>(`/api/results/${id}/diagnose`, {
-      method: 'POST',
-    }),
-};
-
 // ==================== Export default API object ====================
 
 export const api = {
@@ -621,7 +378,6 @@ export const api = {
   integrations: integrationsApi,
   plugins: pluginsApi,
   rlTraining: rlTrainingApi,
-  results: resultsApi,
 };
 
 export default api;

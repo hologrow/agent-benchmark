@@ -70,26 +70,23 @@ export async function POST(
     const isLangfuseEnabled = langfuseIntegration && langfuseIntegration.enabled === 1;
 
     let syncResult = { success: 0, failed: 0 };
+    let traceSyncIncomplete = false;
+    let traceSyncPendingCount = 0;
 
     if (isLangfuseEnabled) {
       console.log(`[Evaluate] Execution ${executionId}: Langfuse enabled; forcing trace sync before evaluation...`);
       const syncStatus = await forceSyncTraces(executionId, 3);
       syncResult = syncStatus.syncResult;
+      traceSyncIncomplete = !syncStatus.success;
+      traceSyncPendingCount = syncStatus.pendingCount;
 
-      if (!syncStatus.success) {
-        console.error(`[Evaluate] Execution ${executionId}: trace sync incomplete; blocking evaluation`);
-        return NextResponse.json(
-          {
-            error: 'Trace sync failed or incomplete. Check Langfuse integration and retry.',
-            trace_sync: syncResult,
-            pending_count: syncStatus.pendingCount,
-            message: 'All traces must sync before evaluation. Ensure the trace provider is reachable.'
-          },
-          { status: 400 }
+      if (traceSyncIncomplete) {
+        console.warn(
+          `[Evaluate] Execution ${executionId}: trace sync incomplete (${traceSyncPendingCount} pending); continuing evaluation without full trace data`,
         );
+      } else {
+        console.log(`[Evaluate] Execution ${executionId}: trace sync OK; starting evaluation`);
       }
-
-      console.log(`[Evaluate] Execution ${executionId}: trace sync OK; starting evaluation`);
     } else {
       console.log(`[Evaluate] Execution ${executionId}: Langfuse not enabled; skipping trace sync`);
     }
@@ -132,7 +129,11 @@ export async function POST(
       message: 'Evaluation started',
       execution_id: executionId,
       log_file: logFile,
-      trace_sync: syncResult
+      trace_sync: syncResult,
+      ...(traceSyncIncomplete && {
+        trace_sync_incomplete: true,
+        trace_sync_pending_count: traceSyncPendingCount,
+      }),
     });
   } catch (error) {
     console.error('Error starting evaluation:', error);

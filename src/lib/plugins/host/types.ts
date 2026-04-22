@@ -3,16 +3,11 @@
  * 避免按能力拆散多个顶层入口文件。
  */
 
-import type {
-  LegacySyncFetchResult,
-  LegacySyncParsedTestCasePayload,
-  SyncTestCasesToDatabaseInput,
-  SyncTestCasesToDatabaseResult,
-} from '@/lib/plugins/types';
+import type { LegacySyncParsedTestCasePayload } from "@/lib/plugins/types";
 
-/** 外部表同步落库所需的低层端口（由宿主在 server/browser 分别实现）。 */
-export interface TestCasePersistencePort {
-  getAllTestCasesForSync: () => Promise<Array<{ id: number; test_id: string }>>;
+/** 宿主桥接：用例 CRUD、测试集创建。 */
+export interface HostBridge {
+  getAllTestCases: () => Promise<Array<{ id: number; test_id: string }>>;
   createTestCase: (
     row: LegacySyncParsedTestCasePayload,
   ) => Promise<{ id: number }>;
@@ -24,7 +19,7 @@ export interface TestCasePersistencePort {
     meta: {
       name: string;
       description: string;
-      source: 'lark' | 'manual' | null;
+      source: string;
       source_url: string | null;
     },
     testCaseIds: number[],
@@ -36,10 +31,5 @@ export interface TestCasePersistencePort {
  * 新能力在此增加命名空间即可（例如 future: `notifications`）。
  */
 export interface PluginHostContext {
-  externalTableSync: {
-    persistAfterFetch(
-      input: SyncTestCasesToDatabaseInput,
-      fetchResult: LegacySyncFetchResult,
-    ): Promise<SyncTestCasesToDatabaseResult>;
-  };
+  bridge: HostBridge;
 }

@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
-import { pluginRegistry } from '@/lib/plugins';
-import { ensureBuiltInPluginsRegistered } from '@/lib/plugins/loader';
-import { Capability, isImportTestCasesPlugin } from '@/lib/plugins/types';
-import { getAllIntegrations } from '@/lib/db';
+import { NextResponse } from "next/server";
+import { pluginRegistry } from "@/lib/plugins";
+import { ensureBuiltInPluginsRegistered } from "@/lib/plugins/loader";
+import { Capability } from "@/lib/plugins/types";
+import { getAllIntegrations } from "@/lib/db";
 
 // GET /api/plugins/discover - Discover all available plugin capabilities
 export async function GET() {
@@ -13,29 +13,34 @@ export async function GET() {
     const integrations = getAllIntegrations();
     for (const integration of integrations) {
       try {
-        const config = JSON.parse(integration.config || '{}');
+        const config = JSON.parse(integration.config || "{}");
         pluginRegistry.loadConfig(
           integration.type,
           integration.enabled === 1,
-          config
+          config,
         );
       } catch (e) {
         console.error(
           `[PluginDiscover] Failed to load config: ${integration.type}`,
-          e
+          e,
         );
       }
     }
 
     // Get all enabled plugins with IMPORT_TEST_CASES capability
-    const importPlugins = pluginRegistry.getEnabledPluginsByCapability(Capability.IMPORT_TEST_CASES);
+    const importPlugins = pluginRegistry.getEnabledPluginsByCapability(
+      Capability.IMPORT_TEST_CASES,
+    );
 
     const importButtons = importPlugins
-      .filter(isImportTestCasesPlugin)
+      .filter((plugin) => {
+        return plugin.hasCapability(Capability.IMPORT_TEST_CASES);
+      })
       .map((plugin) => {
         const metadata = plugin.getMetadata();
-        const buttonUI = plugin.getImportButtonUI();
-        const dialogDef = plugin.getImportDialog();
+        // TODO: fixme
+        const buttonUI = (plugin as any).getImportButtonUI();
+        const dialogDef = (plugin as any).getImportDialog();
 
         if (!buttonUI) {
           return null;
@@ -56,10 +61,10 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error('[PluginDiscover] Failed to discover plugins:', error);
+    console.error("[PluginDiscover] Failed to discover plugins:", error);
     return NextResponse.json(
-      { error: 'Failed to discover plugins' },
-      { status: 500 }
+      { error: "Failed to discover plugins" },
+      { status: 500 },
     );
   }
 }

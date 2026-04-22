@@ -11,7 +11,7 @@ import {
   GraduationCap,
 } from "lucide-react";
 
-const showRLTraining = process.env.RL_TRAINING === "1";
+const showRLTraining = process.env.NEXT_PUBLIC_RL_TRAINING === "1";
 
 const navItems = [
   { href: "/", label: "Benchmark Scores", icon: BarChart3 },

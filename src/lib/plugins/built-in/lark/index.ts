@@ -1,6 +1,7 @@
+import "server-only";
 /**
- * Lark/Feishu — **服务端注册**：`LarkPlugin` + `./bitable`（Lark SDK，供 API/registry 使用）。
- * **默认开发者入口在浏览器**：同目录 `client.ts`、`import-dialog.tsx`（`openLarkBitableImportDialog` 等）。
+ * server instance
+   singleton
  */
 
 import { Client, Domain } from "@larksuiteoapi/node-sdk";
@@ -15,16 +16,13 @@ import {
 } from "../../";
 import type {
   IPlugin,
-  LegacySyncCatalogQuery,
-  LegacySyncCatalogResult,
   LegacySyncFetchResult,
-  SyncTestCasesToDatabaseInput,
+  SyncTestCasesToDatabaseResult,
 } from "../../types";
-import {
-  runLegacySyncCatalog,
-  fetchLegacyBitableRecordsForSync,
-  createEnvBasedLarkClient,
-} from "./bitable";
+import type { SyncTestCasesInput } from "./api-types";
+import { createServerPluginHostContext } from "../../host/server";
+import { fetchBitableRecords } from "./bitable";
+import { indexBy, prop } from "ramda";
 
 interface LarkConfig {
   appId: string;
@@ -43,8 +41,6 @@ export class LarkPlugin extends BasePlugin {
   listImportSources!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["listImportSources"];
   listImportTables!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["listImportTables"];
   listImportFields!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["listImportFields"];
-  getLegacySyncCatalog!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["getLegacySyncCatalog"];
-  fetchLegacySyncRecords!: CapabilityInterfaces[Capability.IMPORT_TEST_CASES]["fetchLegacySyncRecords"];
 
   constructor() {
     super({
@@ -54,34 +50,6 @@ export class LarkPlugin extends BasePlugin {
       version: "1.0.0",
       author: "Benchmark Platform",
       icon: "/lark.png",
-      configFields: [
-        {
-          name: "appType",
-          label: "App Type",
-          type: "select",
-          required: true,
-          defaultValue: "feishu",
-          description: "Choose Lark (International) or Feishu (China)",
-          options: [
-            { label: "Feishu (China)", value: "feishu" },
-            { label: "Lark (International)", value: "lark" },
-          ],
-        },
-        {
-          name: "appId",
-          label: "App ID",
-          type: "text",
-          required: true,
-          description: "Get App ID from Lark/Feishu Developer Console",
-        },
-        {
-          name: "appSecret",
-          label: "App Secret",
-          type: "password",
-          required: true,
-          description: "Get App Secret from Lark/Feishu Developer Console",
-        },
-      ],
       capabilities: [Capability.IMPORT_TEST_CASES],
     });
 
@@ -93,32 +61,143 @@ export class LarkPlugin extends BasePlugin {
     this.listImportSources = this._listImportSources.bind(this);
     this.listImportTables = this._listImportTables.bind(this);
     this.listImportFields = this._listImportFields.bind(this);
-    this.getLegacySyncCatalog = this._getLegacySyncCatalog.bind(this);
-    this.fetchLegacySyncRecords = this._fetchLegacySyncRecords.bind(this);
   }
 
-  /** Prefer integration credentials; fall back to env vars when config is empty. */
-  private getClientForLegacySync(): Client {
+  /**
+   * 服务端路由专用：带集成凭据的 Lark SDK Client；无集成配置时回退 LARK_* / FEISHU_*。
+   */
+  createBitableSyncClient(): Client {
     const cfg = this.getLarkConfig();
     if (cfg.appId && cfg.appSecret) {
       return this.getClient();
     }
-    return createEnvBasedLarkClient();
+    throw new Error("lark require appSecret  & appid");
   }
 
-  private async _getLegacySyncCatalog(
-    query: LegacySyncCatalogQuery,
-  ): Promise<LegacySyncCatalogResult> {
-    return runLegacySyncCatalog(this.getClientForLegacySync(), query);
-  }
-
-  private async _fetchLegacySyncRecords(
-    input: SyncTestCasesToDatabaseInput,
-  ): Promise<LegacySyncFetchResult> {
-    return fetchLegacyBitableRecordsForSync(
-      this.getClientForLegacySync(),
+  /**
+   * 同步 Bitable 到本地测试用例：服务端拉取、解析并落库（含可选测试集）。
+   */
+  async syncBitableToTestCases(
+    input: SyncTestCasesInput,
+  ): Promise<SyncTestCasesToDatabaseResult> {
+    const client = this.createBitableSyncClient();
+    const fetchResult: LegacySyncFetchResult = await fetchBitableRecords(
+      client,
       input,
     );
+    const { bridge } = createServerPluginHostContext();
+
+    const {
+      syncMode = "upsert",
+      createTestSet: shouldCreateTestSet = true,
+      testSetName,
+      testSetDescription,
+      appToken,
+      tableId,
+    } = input;
+
+    const nonFatal = fetchResult.nonFatalErrors ?? [];
+    const fetchError =
+      !fetchResult.success || fetchResult.apiError
+        ? fetchResult.apiError || nonFatal[0] || "External sync fetch failed"
+        : undefined;
+
+    if (fetchError) {
+      return {
+        success: false,
+        stats: {
+          total: 0,
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          errors: 1,
+        },
+        testSet: null,
+        errors: [fetchError],
+      };
+    }
+
+    const rows = fetchResult.rows;
+    const existing = await bridge.getAllTestCases();
+    const existingTestIdMap = indexBy(prop("test_id"), existing);
+
+    let created = 0;
+    let updated = 0;
+    let skipped = fetchResult.rawRecordCount - rows.length;
+    const errors: string[] = [...nonFatal];
+    const createdTestCaseIds: number[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const testCase = rows[i];
+      try {
+        const existingRow = existingTestIdMap[testCase.test_id];
+        if (existingRow && syncMode !== "create_only") {
+          await bridge.updateTestCase(existingRow.id, testCase);
+          updated++;
+          createdTestCaseIds.push(existingRow.id);
+        } else if (!existingRow && syncMode !== "update_only") {
+          const newTc = await bridge.createTestCase(testCase);
+          created++;
+          createdTestCaseIds.push(newTc.id);
+          existingTestIdMap[testCase.test_id] = {
+            id: newTc.id,
+            test_id: testCase.test_id,
+          };
+        } else if (existingRow) {
+          createdTestCaseIds.push(existingRow.id);
+          skipped++;
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        errors.push(`Row ${i + 1} (${testCase.test_id}): ${errorMsg}`);
+      }
+    }
+
+    let testSet: {
+      id: number;
+      name: string;
+      testCaseCount: number;
+    } | null = null;
+
+    if (shouldCreateTestSet && createdTestCaseIds.length > 0) {
+      try {
+        const dateStr = new Intl.DateTimeFormat(undefined, {
+          dateStyle: "short",
+        }).format(new Date());
+        const defaultName =
+          testSetName ||
+          fetchResult.suggestedTestSetName ||
+          `External sync - ${dateStr}`;
+
+        testSet = await bridge.createTestSet(
+          {
+            name: defaultName,
+            description:
+              testSetDescription ||
+              `Synced from external table — ${createdTestCaseIds.length} test case(s)`,
+            source: "lark",
+            source_url: `https://base.larkoffice.com/app/${appToken}/table/${tableId}`,
+          },
+          createdTestCaseIds,
+        );
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        errors.push(`Failed to create test set: ${errorMsg}`);
+      }
+    }
+
+    return {
+      success: true,
+      stats: {
+        total: fetchResult.rawRecordCount,
+        created,
+        updated,
+        skipped,
+        errors: errors.length,
+      },
+      testSet,
+      errors: errors.slice(0, 10),
+    };
   }
 
   private async _listImportSources(): Promise<ImportSchemaSource[]> {
@@ -246,12 +325,12 @@ export class LarkPlugin extends BasePlugin {
 
   /**
    * Batch import test cases（仅拉取并解析，不落库）。
-   * 浏览器导入向导应走 POST `/api/test-cases/sync`（legacy sync + 宿主人库）。
+   * 浏览器 Bitable 向导应走 `POST /api/plugins/lark` 且 `route: bitable.syncToTestCases` 一站式同步。
    * @param items Format: ["baseId/tableId"]
    */
   private async _importItems(
     items: string[],
-    fieldMapping?: Record<string, string>
+    fieldMapping?: Record<string, string>,
   ): Promise<{
     success: boolean;
     importedCount: number;
@@ -272,7 +351,7 @@ export class LarkPlugin extends BasePlugin {
           client,
           baseId,
           tableId,
-          fieldMapping
+          fieldMapping,
         );
         allTestCases.push(...testCases);
       }
@@ -372,13 +451,7 @@ export class LarkPlugin extends BasePlugin {
             "答案",
             "Answer",
           ],
-          key_points: [
-            "key_points",
-            "Key Points",
-            "关键点",
-            "要点",
-            "得分点",
-          ],
+          key_points: ["key_points", "Key Points", "关键点", "要点", "得分点"],
           forbidden_points: [
             "forbidden_points",
             "Forbidden Points",
@@ -526,3 +599,5 @@ export const builtInPluginEntry: { id: string; create: () => IPlugin } = {
   id: "lark",
   create: () => new LarkPlugin(),
 };
+
+export type * from "./api-types";

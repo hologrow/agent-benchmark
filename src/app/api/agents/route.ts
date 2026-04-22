@@ -23,7 +23,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, description, command, agent_type, config_json } = body;
+    const { name, description, command, agent_type, config_json, config } = body;
 
     if (!name) {
       return NextResponse.json(
@@ -41,16 +41,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build config_json from body or legacy command
-    let configJson: string;
-    if (config_json) {
-      configJson = typeof config_json === 'string' ? config_json : JSON.stringify(config_json);
+    // Build config_json: prefer explicit config_json, then structured `config` (CreateAgentRequest), then legacy `command`
+    let configJson: string | undefined;
+    if (config_json !== undefined && config_json !== null && config_json !== '') {
+      configJson =
+        typeof config_json === 'string' ? config_json : JSON.stringify(config_json);
+    } else if (config !== undefined && config !== null) {
+      configJson = typeof config === 'string' ? config : JSON.stringify(config);
     } else if (command) {
-      // Legacy: command-only → config_json
       configJson = JSON.stringify({ command });
-    } else {
+    }
+
+    if (configJson === undefined) {
       return NextResponse.json(
-        { error: 'Command is required for this agent type' },
+        { error: 'config or config_json (or legacy command) is required' },
         { status: 400 }
       );
     }

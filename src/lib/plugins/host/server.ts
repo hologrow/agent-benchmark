@@ -1,19 +1,15 @@
+import "server-only";
 /**
- * 服务端：默认插件宿主（直连 DB）。
+ * 服务端：默认插件bridge
  */
 
-import {
-  createTestCase,
-  getAllTestCases,
-  updateTestCase,
-} from '@/lib/db';
-import { createTestSet } from '@/lib/db/testset';
-import { applyExternalTableSyncWithPersistence } from './apply-external-sync';
-import type { PluginHostContext, TestCasePersistencePort } from './types';
+import { createTestCase, getAllTestCases, updateTestCase } from "@/lib/db";
+import { createTestSet } from "@/lib/db/testset";
+import type { PluginHostContext, HostBridge } from "./types";
 
-function createServerTestCasePersistencePort(): TestCasePersistencePort {
-  return {
-    async getAllTestCasesForSync() {
+function createServerBridge(): HostBridge {
+  const bridge: HostBridge = {
+    async getAllTestCases() {
       return getAllTestCases().map((tc) => ({
         id: tc.id,
         test_id: tc.test_id,
@@ -35,19 +31,11 @@ function createServerTestCasePersistencePort(): TestCasePersistencePort {
       };
     },
   };
+  return bridge;
 }
 
-const serverPortSingleton = createServerTestCasePersistencePort();
+const serverBridge = createServerBridge();
 
 export function createServerPluginHostContext(): PluginHostContext {
-  return {
-    externalTableSync: {
-      persistAfterFetch: (input, fetchResult) =>
-        applyExternalTableSyncWithPersistence(
-          serverPortSingleton,
-          input,
-          fetchResult,
-        ),
-    },
-  };
+  return { bridge: serverBridge };
 }

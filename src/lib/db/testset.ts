@@ -1,12 +1,12 @@
 // TestSet related operations
 
-import { getDatabase } from '.';
+import { getDatabase } from ".";
 
 export interface TestSet {
   id: number;
   name: string;
   description: string;
-  source: 'lark' | 'manual' | null;
+  source: string;
   source_url: string | null;
   created_at: string;
   updated_at: string;
@@ -23,42 +23,54 @@ export interface TestSetItem {
 // Get all test sets
 export function getAllTestSets(): TestSet[] {
   const db = getDatabase();
-  return db.prepare('SELECT * FROM test_sets ORDER BY created_at DESC').all() as TestSet[];
+  return db
+    .prepare("SELECT * FROM test_sets ORDER BY created_at DESC")
+    .all() as TestSet[];
 }
 
 // Get test set details (including test cases)
-export function getTestSetById(id: number): (TestSet & { test_cases: any[] }) | undefined {
+export function getTestSetById(
+  id: number,
+): (TestSet & { test_cases: any[] }) | undefined {
   const db = getDatabase();
-  const testSet = db.prepare('SELECT * FROM test_sets WHERE id = ?').get(id) as TestSet | undefined;
+  const testSet = db.prepare("SELECT * FROM test_sets WHERE id = ?").get(id) as
+    | TestSet
+    | undefined;
 
   if (!testSet) return undefined;
 
-  const testCases = db.prepare(`
+  const testCases = db
+    .prepare(
+      `
     SELECT tc.* FROM test_cases tc
     JOIN test_set_items tsi ON tc.id = tsi.test_case_id
     WHERE tsi.test_set_id = ?
     ORDER BY tsi.order_index ASC, tc.id ASC
-  `).all(id);
+  `,
+    )
+    .all(id);
 
   return { ...testSet, test_cases: testCases };
 }
 
 // Create test set and items
 export function createTestSet(
-  testSet: Omit<TestSet, 'id' | 'created_at' | 'updated_at'>,
-  testCaseIds: number[]
+  testSet: Omit<TestSet, "id" | "created_at" | "updated_at">,
+  testCaseIds: number[],
 ): TestSet {
   const db = getDatabase();
 
-  const result = db.prepare(
-    'INSERT INTO test_sets (name, description, source, source_url) VALUES (?, ?, ?, ?)'
-  ).run(testSet.name, testSet.description, testSet.source, testSet.source_url);
+  const result = db
+    .prepare(
+      "INSERT INTO test_sets (name, description, source, source_url) VALUES (?, ?, ?, ?)",
+    )
+    .run(testSet.name, testSet.description, testSet.source, testSet.source_url);
 
   const testSetId = result.lastInsertRowid as number;
 
   // Link test cases
   const insertItem = db.prepare(
-    'INSERT INTO test_set_items (test_set_id, test_case_id, order_index) VALUES (?, ?, ?)'
+    "INSERT INTO test_set_items (test_set_id, test_case_id, order_index) VALUES (?, ?, ?)",
   );
 
   for (let i = 0; i < testCaseIds.length; i++) {
@@ -71,33 +83,47 @@ export function createTestSet(
 // Update test set
 export function updateTestSet(
   id: number,
-  updates: Partial<Omit<TestSet, 'id' | 'created_at' | 'updated_at'>>,
-  testCaseIds?: number[]
+  updates: Partial<Omit<TestSet, "id" | "created_at" | "updated_at">>,
+  testCaseIds?: number[],
 ): TestSet {
   const db = getDatabase();
 
   const sets: string[] = [];
   const values: unknown[] = [];
 
-  if (updates.name !== undefined) { sets.push('name = ?'); values.push(updates.name); }
-  if (updates.description !== undefined) { sets.push('description = ?'); values.push(updates.description); }
-  if (updates.source !== undefined) { sets.push('source = ?'); values.push(updates.source); }
-  if (updates.source_url !== undefined) { sets.push('source_url = ?'); values.push(updates.source_url); }
+  if (updates.name !== undefined) {
+    sets.push("name = ?");
+    values.push(updates.name);
+  }
+  if (updates.description !== undefined) {
+    sets.push("description = ?");
+    values.push(updates.description);
+  }
+  if (updates.source !== undefined) {
+    sets.push("source = ?");
+    values.push(updates.source);
+  }
+  if (updates.source_url !== undefined) {
+    sets.push("source_url = ?");
+    values.push(updates.source_url);
+  }
 
   if (sets.length > 0) {
-    sets.push('updated_at = CURRENT_TIMESTAMP');
+    sets.push("updated_at = CURRENT_TIMESTAMP");
     values.push(id);
-    db.prepare(`UPDATE test_sets SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    db.prepare(`UPDATE test_sets SET ${sets.join(", ")} WHERE id = ?`).run(
+      ...values,
+    );
   }
 
   // Update test case associations
   if (testCaseIds !== undefined) {
     // Delete old associations
-    db.prepare('DELETE FROM test_set_items WHERE test_set_id = ?').run(id);
+    db.prepare("DELETE FROM test_set_items WHERE test_set_id = ?").run(id);
 
     // Add new associations
     const insertItem = db.prepare(
-      'INSERT INTO test_set_items (test_set_id, test_case_id, order_index) VALUES (?, ?, ?)'
+      "INSERT INTO test_set_items (test_set_id, test_case_id, order_index) VALUES (?, ?, ?)",
     );
 
     for (let i = 0; i < testCaseIds.length; i++) {
@@ -112,32 +138,39 @@ export function updateTestSet(
 export function deleteTestSet(id: number): void {
   const db = getDatabase();
   // Associated records will be cascade deleted via foreign key
-  db.prepare('DELETE FROM test_sets WHERE id = ?').run(id);
+  db.prepare("DELETE FROM test_sets WHERE id = ?").run(id);
 }
 
 // Get all test case IDs for a test set
 export function getTestSetCaseIds(testSetId: number): number[] {
   const db = getDatabase();
-  const items = db.prepare(
-    'SELECT test_case_id FROM test_set_items WHERE test_set_id = ? ORDER BY order_index ASC'
-  ).all(testSetId) as { test_case_id: number }[];
+  const items = db
+    .prepare(
+      "SELECT test_case_id FROM test_set_items WHERE test_set_id = ? ORDER BY order_index ASC",
+    )
+    .all(testSetId) as { test_case_id: number }[];
 
-  return items.map(item => item.test_case_id);
+  return items.map((item) => item.test_case_id);
 }
 
 // ==================== Data Migration Functions ====================
 
 // Migrate existing test_case_ids to test_set_items
-export function migrateTestCaseIdsToTestSets(): { migrated: number; errors: string[] } {
+export function migrateTestCaseIdsToTestSets(): {
+  migrated: number;
+  errors: string[];
+} {
   const db = getDatabase();
   const errors: string[] = [];
   let migrated = 0;
 
   try {
     // Find all benchmarks with test_case_ids but no test_set_id
-    const benchmarks = db.prepare(
-      "SELECT id, name, test_case_ids FROM benchmarks WHERE test_case_ids IS NOT NULL AND test_case_ids != '[]' AND test_set_id IS NULL"
-    ).all() as { id: number; name: string; test_case_ids: string }[];
+    const benchmarks = db
+      .prepare(
+        "SELECT id, name, test_case_ids FROM benchmarks WHERE test_case_ids IS NOT NULL AND test_case_ids != '[]' AND test_set_id IS NULL",
+      )
+      .all() as { id: number; name: string; test_case_ids: string }[];
 
     for (const benchmark of benchmarks) {
       try {
@@ -146,15 +179,21 @@ export function migrateTestCaseIdsToTestSets(): { migrated: number; errors: stri
         if (testCaseIds.length === 0) continue;
 
         // Create test set
-        const testSetResult = db.prepare(
-          'INSERT INTO test_sets (name, description, source) VALUES (?, ?, ?)'
-        ).run(`${benchmark.name} - Default Test Set`, 'Auto-migrated test set', 'manual');
+        const testSetResult = db
+          .prepare(
+            "INSERT INTO test_sets (name, description, source) VALUES (?, ?, ?)",
+          )
+          .run(
+            `${benchmark.name} - Default Test Set`,
+            "Auto-migrated test set",
+            "manual",
+          );
 
         const testSetId = testSetResult.lastInsertRowid as number;
 
         // Add test case associations
         const insertItem = db.prepare(
-          'INSERT INTO test_set_items (test_set_id, test_case_id, order_index) VALUES (?, ?, ?)'
+          "INSERT INTO test_set_items (test_set_id, test_case_id, order_index) VALUES (?, ?, ?)",
         );
 
         for (let i = 0; i < testCaseIds.length; i++) {
@@ -162,7 +201,10 @@ export function migrateTestCaseIdsToTestSets(): { migrated: number; errors: stri
         }
 
         // Update benchmark
-        db.prepare('UPDATE benchmarks SET test_set_id = ? WHERE id = ?').run(testSetId, benchmark.id);
+        db.prepare("UPDATE benchmarks SET test_set_id = ? WHERE id = ?").run(
+          testSetId,
+          benchmark.id,
+        );
 
         migrated++;
       } catch (e) {
