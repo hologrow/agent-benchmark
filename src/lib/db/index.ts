@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
-import { join } from "path";
+import { mkdirSync } from "node:fs";
+import { dirname, join } from "path";
 import { migrate } from "./migrator";
 
 const DB_PATH =
@@ -9,6 +10,7 @@ let db: Database.Database | null = null;
 
 export function getDatabase(): Database.Database {
   if (!db) {
+    mkdirSync(dirname(DB_PATH), { recursive: true });
     db = new Database(DB_PATH);
     db.pragma("journal_mode = WAL");
     initializeDatabase();
