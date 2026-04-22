@@ -7,7 +7,6 @@
 import {
   IPlugin,
   PluginMetadata,
-  PluginConfigField,
   Capability,
 } from './types';
 
@@ -15,12 +14,12 @@ export abstract class BasePlugin implements IPlugin {
   protected config: Record<string, unknown> = {};
   protected metadata: PluginMetadata;
 
-  constructor(metadata: Omit<PluginMetadata, 'configFields' | 'capabilities'> & {
-    configFields?: PluginConfigField[];
-    capabilities?: Capability[];
-  }) {
+  constructor(
+    metadata: Omit<PluginMetadata, 'capabilities'> & {
+      capabilities?: Capability[];
+    },
+  ) {
     this.metadata = {
-      configFields: [],
       capabilities: [],
       ...metadata,
     };
@@ -38,22 +37,11 @@ export abstract class BasePlugin implements IPlugin {
     this.config = config;
   }
 
-  validateConfig(config: Record<string, unknown>): { valid: boolean; errors?: string[] } {
-    const errors: string[] = [];
-
-    for (const field of this.metadata.configFields) {
-      if (field.required) {
-        const value = config[field.name];
-        if (value === undefined || value === null || value === '') {
-          errors.push(`${field.label} is required`);
-        }
-      }
-    }
-
-    return {
-      valid: errors.length === 0,
-      errors: errors.length > 0 ? errors : undefined,
-    };
+  validateConfig(_config: Record<string, unknown>): {
+    valid: boolean;
+    errors?: string[];
+  } {
+    return { valid: true };
   }
 
   hasCapability(capability: Capability): boolean {

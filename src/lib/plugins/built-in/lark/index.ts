@@ -50,34 +50,6 @@ export class LarkPlugin extends BasePlugin {
       version: "1.0.0",
       author: "Benchmark Platform",
       icon: "/lark.png",
-      configFields: [
-        {
-          name: "appType",
-          label: "App Type",
-          type: "select",
-          required: true,
-          defaultValue: "feishu",
-          description: "Choose Lark (International) or Feishu (China)",
-          options: [
-            { label: "Feishu (China)", value: "feishu" },
-            { label: "Lark (International)", value: "lark" },
-          ],
-        },
-        {
-          name: "appId",
-          label: "App ID",
-          type: "text",
-          required: true,
-          description: "Get App ID from Lark/Feishu Developer Console",
-        },
-        {
-          name: "appSecret",
-          label: "App Secret",
-          type: "password",
-          required: true,
-          description: "Get App Secret from Lark/Feishu Developer Console",
-        },
-      ],
       capabilities: [Capability.IMPORT_TEST_CASES],
     });
 

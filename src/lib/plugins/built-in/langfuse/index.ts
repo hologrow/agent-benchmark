@@ -31,33 +31,6 @@ export class LangfusePlugin extends BasePlugin {
       version: "1.0.0",
       author: "Benchmark Platform",
       icon: "/langfuse.png",
-      configFields: [
-        {
-          name: "baseUrl",
-          label: "Base URL",
-          type: "url",
-          required: true,
-          defaultValue: "https://cloud.langfuse.com",
-          description:
-            "Langfuse service URL, keep default for cloud version, use custom domain for self-hosted",
-        },
-        {
-          name: "publicKey",
-          label: "Public Key",
-          type: "text",
-          required: true,
-          placeholder: "pk-lf-...",
-          description: "Get Public Key from Langfuse project settings",
-        },
-        {
-          name: "secretKey",
-          label: "Secret Key",
-          type: "password",
-          required: true,
-          placeholder: "sk-lf-...",
-          description: "Get Secret Key from Langfuse project settings",
-        },
-      ],
       capabilities: [Capability.TRACE_EXECUTION],
     });
 

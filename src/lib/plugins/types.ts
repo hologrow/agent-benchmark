@@ -281,35 +281,6 @@ export interface CapabilityInterfaces {
 export type CapabilityType<T extends Capability> = CapabilityInterfaces[T];
 
 /**
- * Plugin config field definition
- */
-export interface PluginConfigField {
-  /** Field name */
-  name: string;
-  /** Display label */
-  label: string;
-  /** Field type */
-  type:
-    | "text"
-    | "password"
-    | "url"
-    | "number"
-    | "select"
-    | "textarea"
-    | "boolean";
-  /** Whether required */
-  required?: boolean;
-  /** Default value */
-  defaultValue?: string | number | boolean;
-  /** Placeholder hint */
-  placeholder?: string;
-  /** Field description */
-  description?: string;
-  /** Options (for select type only) */
-  options?: { label: string; value: string }[];
-}
-
-/**
  * Plugin metadata
  */
 export interface PluginMetadata {
@@ -325,8 +296,6 @@ export interface PluginMetadata {
   author?: string;
   /** Icon */
   icon?: string;
-  /** Config field definitions */
-  configFields: PluginConfigField[];
   /** List of provided capabilities */
   capabilities: Capability[];
 }
