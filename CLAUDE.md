@@ -63,7 +63,7 @@ Agent configuration is stored as JSON in `agents.config_json`:
 
 ### Database Layer
 
-SQLite with migrations in `src/lib/db/migrations/`. Key tables:
+SQLite schema is managed with **Alembic** (`alembic/`, `db/models.py`). On app startup, `getDatabase()` runs `uv run alembic upgrade head` (same `DATABASE_PATH` as better-sqlite3). CLI: `pnpm db:migrate` or `uv run alembic upgrade head`. Key tables:
 
 - `agents` - Agent configs with `agent_type` + `config_json`
 - `test_cases` - Individual test cases with key/forbidden points
@@ -75,7 +75,7 @@ SQLite with migrations in `src/lib/db/migrations/`. Key tables:
 - `evaluators` - Evaluation configuration referencing model + script
 - `models` - LLM model configs for evaluation
 
-Migrations run automatically on startup via `src/lib/db/migrator.ts`.
+New revisions: change `db/models.py`, then `uv run alembic revision --autogenerate -m "..."` and review the file under `alembic/versions/`.
 
 ### Benchmark Execution Flow
 

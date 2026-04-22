@@ -1,35 +1,42 @@
 import Database from "better-sqlite3";
+import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { dirname, join } from "path";
-import { migrate } from "./migrator";
+import { dirname, join, resolve } from "path";
 
-const DB_PATH =
-  process.env.DATABASE_PATH || join(process.cwd(), "data", "benchmark.db");
+function resolveDbPath(): string {
+  const raw =
+    process.env.DATABASE_PATH || join(process.cwd(), "data", "benchmark.db");
+  return resolve(raw);
+}
+
+const DB_PATH = resolveDbPath();
 
 let db: Database.Database | null = null;
+
+function runAlembicUpgrade(dbPath: string) {
+  try {
+    execFileSync("uv", ["run", "alembic", "upgrade", "head"], {
+      cwd: process.cwd(),
+      stdio: "inherit",
+      env: { ...process.env, DATABASE_PATH: dbPath },
+    });
+  } catch (error) {
+    console.error(
+      "[Database] alembic upgrade head failed:",
+      error instanceof Error ? error.message : error,
+    );
+    throw error;
+  }
+}
 
 export function getDatabase(): Database.Database {
   if (!db) {
     mkdirSync(dirname(DB_PATH), { recursive: true });
+    runAlembicUpgrade(DB_PATH);
     db = new Database(DB_PATH);
     db.pragma("journal_mode = WAL");
-    initializeDatabase();
   }
   return db;
-}
-
-function initializeDatabase() {
-  if (!db) return;
-
-  // Run migrations (using the new migration system)
-  const migrationsDir = join(process.cwd(), "src", "lib", "db", "migrations");
-  const result = migrate(db, migrationsDir);
-
-  if (!result.success) {
-    console.error("[Database] Migration failed:", result.error);
-  } else if (result.executed.length > 0) {
-    console.log("[Database] Migrations executed:", result.executed);
-  }
 }
 
 // Agent Types
