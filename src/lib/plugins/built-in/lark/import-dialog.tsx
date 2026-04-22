@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useState, useRef, type ComponentType } from 'react';
-import { createRoot } from 'react-dom/client';
+import { useState, useRef, type ComponentType } from "react";
+import { createRoot } from "react-dom/client";
 import {
   Dialog,
   DialogContent,
@@ -9,27 +9,27 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import * as LucideIcons from 'lucide-react';
-import { Loader2, AlertCircle, HelpCircle, ArrowLeft } from 'lucide-react';
-import { toast } from 'sonner';
-import type { ImportButtonUI } from '@/types/api';
-import type { LarkField, LarkTable } from './api-types';
+} from "@/components/ui/select";
+import * as LucideIcons from "lucide-react";
+import { Loader2, AlertCircle, HelpCircle, ArrowLeft } from "lucide-react";
+import { toast } from "sonner";
+import type { ImportButtonUI } from "@/types/api";
+import type { LarkField, LarkTable } from "./api-types";
 import {
   larkLegacySyncToDatabase,
   larkListImportFields,
   larkListImportTables,
-} from './browser-api';
+} from "./browser-api";
 
 /** Lark Bitable 向导表单 props */
 export type LarkBitableImportFormProps = {
@@ -38,7 +38,7 @@ export type LarkBitableImportFormProps = {
   onCancel?: () => void;
 };
 
-const LARK_PLUGIN_ID = 'lark';
+const LARK_PLUGIN_ID = "lark";
 
 interface SystemField {
   key: string;
@@ -48,11 +48,36 @@ interface SystemField {
 }
 
 const SYSTEM_FIELDS: SystemField[] = [
-  { key: 'input', label: 'Input', required: true, description: 'Test case input/prompt' },
-  { key: 'expected_output', label: 'Expected Output', required: true, description: 'Expected answer/output' },
-  { key: 'key_points', label: 'Key Points', required: false, description: 'Scoring key points' },
-  { key: 'forbidden_points', label: 'Forbidden Points', required: false, description: 'Points that should not appear' },
-  { key: 'how', label: 'How', required: false, description: 'Test type/category' },
+  {
+    key: "input",
+    label: "Input",
+    required: true,
+    description: "Test case input/prompt",
+  },
+  {
+    key: "expected_output",
+    label: "Expected Output",
+    required: true,
+    description: "Expected answer/output",
+  },
+  {
+    key: "key_points",
+    label: "Key Points",
+    required: false,
+    description: "Scoring key points",
+  },
+  {
+    key: "forbidden_points",
+    label: "Forbidden Points",
+    required: false,
+    description: "Points that should not appear",
+  },
+  {
+    key: "how",
+    label: "How",
+    required: false,
+    description: "Test type/category",
+  },
 ];
 
 /** Lark/Feishu Bitable 导入向导（仅表单内容；弹层请用 {@link openLarkBitableImportDialog} 命令式挂载）。 */
@@ -65,11 +90,11 @@ export function LarkBitableImportForm({
   const [importing, setImporting] = useState(false);
   const [tables, setTables] = useState<LarkTable[]>([]);
   const [tableFields, setTableFields] = useState<LarkField[]>([]);
-  const [appId, setAppId] = useState('');
-  const [selectedTableId, setSelectedTableId] = useState('');
+  const [appId, setAppId] = useState("");
+  const [selectedTableId, setSelectedTableId] = useState("");
   const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
-  const [step, setStep] = useState<'input' | 'select' | 'mapping'>('input');
+  const [step, setStep] = useState<"input" | "select" | "mapping">("input");
 
   const extractAppIdFromUrl = (url: string): string => {
     const match = url.match(/base\/([a-zA-Z0-9]+)/);
@@ -84,7 +109,7 @@ export function LarkBitableImportForm({
 
   const fetchTables = async () => {
     if (!appId) {
-      toast.error('Please enter App ID');
+      toast.error("Please enter App ID");
       return;
     }
 
@@ -96,11 +121,12 @@ export function LarkBitableImportForm({
       if (data.tables?.length > 0) {
         setSelectedTableId(data.tables[0].id);
       } else {
-        setSelectedTableId('');
+        setSelectedTableId("");
       }
-      setStep('select');
+      setStep("select");
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to get table list';
+      const message =
+        err instanceof Error ? err.message : "Failed to get table list";
       setError(message);
       toast.error(message);
     } finally {
@@ -110,18 +136,14 @@ export function LarkBitableImportForm({
 
   const fetchTableFields = async () => {
     if (!appId || !selectedTableId) {
-      toast.error('Please select a table');
+      toast.error("Please select a table");
       return;
     }
 
     setLoading(true);
     setError(null);
     try {
-      const data = await larkListImportFields(
-        pluginId,
-        appId,
-        selectedTableId,
-      );
+      const data = await larkListImportFields(pluginId, appId, selectedTableId);
       setTableFields(data.fields || []);
 
       const autoMapping: Record<string, string> = {};
@@ -136,9 +158,10 @@ export function LarkBitableImportForm({
         });
       });
       setFieldMapping(autoMapping);
-      setStep('mapping');
+      setStep("mapping");
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to get field list';
+      const message =
+        err instanceof Error ? err.message : "Failed to get field list";
       setError(message);
       toast.error(message);
     } finally {
@@ -148,36 +171,35 @@ export function LarkBitableImportForm({
 
   const handleImport = async () => {
     if (!appId || !selectedTableId) {
-      toast.error('Please select a table');
+      toast.error("Please select a table");
       return;
     }
 
     const missingRequired = SYSTEM_FIELDS.filter(
-      (sf) => sf.required && !fieldMapping[sf.key]
+      (sf) => sf.required && !fieldMapping[sf.key],
     );
     if (missingRequired.length > 0) {
       toast.error(
-        `Please map required fields: ${missingRequired.map((f) => f.label).join(', ')}`
+        `Please map required fields: ${missingRequired.map((f) => f.label).join(", ")}`,
       );
       return;
     }
 
     setImporting(true);
     try {
-      /** 必须走 `/api/test-cases/sync` 落库；`plugins.importTestCases` / `importItems` 只拉数不落库。 */
       const result = await larkLegacySyncToDatabase(pluginId, {
         appToken: appId,
         tableId: selectedTableId,
         columnMapping: fieldMapping,
-        syncMode: 'upsert',
+        syncMode: "upsert",
         createTestSet: true,
       });
 
       if (!result.success) {
         const msg =
           result.errors?.length > 0
-            ? result.errors.join('; ')
-            : 'Import failed';
+            ? result.errors.join("; ")
+            : "Import failed";
         toast.error(msg);
         return;
       }
@@ -189,13 +211,11 @@ export function LarkBitableImportForm({
         skipped > 0 ? `${skipped} skipped` : null,
       ].filter(Boolean);
       toast.success(
-        parts.length > 0
-          ? `Sync done: ${parts.join(', ')}`
-          : 'Sync completed',
+        parts.length > 0 ? `Sync done: ${parts.join(", ")}` : "Sync completed",
       );
       onSuccess?.();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Import failed';
+      const message = err instanceof Error ? err.message : "Import failed";
       toast.error(message);
     } finally {
       setImporting(false);
@@ -203,39 +223,39 @@ export function LarkBitableImportForm({
   };
 
   const handleBack = () => {
-    if (step === 'mapping') {
-      setStep('select');
-    } else if (step === 'select') {
-      setStep('input');
+    if (step === "mapping") {
+      setStep("select");
+    } else if (step === "select") {
+      setStep("input");
       setTables([]);
-      setSelectedTableId('');
+      setSelectedTableId("");
     }
     setError(null);
   };
 
   const getStepTitle = () => {
     switch (step) {
-      case 'input':
-        return 'Enter Bitable URL';
-      case 'select':
-        return 'Select Table';
-      case 'mapping':
-        return 'Map Fields';
+      case "input":
+        return "Enter Bitable URL";
+      case "select":
+        return "Select Table";
+      case "mapping":
+        return "Map Fields";
       default:
-        return 'Import from Lark/Feishu';
+        return "Import from Lark/Feishu";
     }
   };
 
   const getStepDescription = () => {
     switch (step) {
-      case 'input':
-        return 'Enter the Bitable App ID from your multidimensional table URL';
-      case 'select':
-        return 'Choose a table to import test cases from';
-      case 'mapping':
-        return 'Map table fields to test case fields';
+      case "input":
+        return "Enter the Bitable App ID from your multidimensional table URL";
+      case "select":
+        return "Choose a table to import test cases from";
+      case "mapping":
+        return "Map table fields to test case fields";
       default:
-        return '';
+        return "";
     }
   };
 
@@ -257,7 +277,7 @@ export function LarkBitableImportForm({
           </div>
         )}
 
-        {step === 'input' && (
+        {step === "input" && (
           <div className="space-y-2">
             <Label htmlFor="app-id">App ID (Base Token)</Label>
             <Input
@@ -272,15 +292,19 @@ export function LarkBitableImportForm({
               <div>
                 <p>Copy the App ID from your Bitable URL:</p>
                 <p className="mt-1 font-mono bg-muted px-1.5 py-0.5 rounded">
-                  https://example.feishu.cn/base/<span className="text-primary font-semibold">AbCdEfG123</span>
+                  https://example.feishu.cn/base/
+                  <span className="text-primary font-semibold">AbCdEfG123</span>
                 </p>
-                <p className="mt-1">You can paste the full URL, and we will extract the App ID automatically.</p>
+                <p className="mt-1">
+                  You can paste the full URL, and we will extract the App ID
+                  automatically.
+                </p>
               </div>
             </div>
           </div>
         )}
 
-        {step === 'select' && (
+        {step === "select" && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm">
               <ArrowLeft className="h-4 w-4 text-muted-foreground" />
@@ -292,17 +316,17 @@ export function LarkBitableImportForm({
               <Label>Select Table</Label>
               <Select
                 value={selectedTableId}
-                onValueChange={(val) => setSelectedTableId(val || '')}
+                onValueChange={(val) => setSelectedTableId(val || "")}
                 disabled={loading || tables.length === 0}
               >
                 <SelectTrigger>
                   <SelectValue
                     placeholder={
                       loading
-                        ? 'Loading...'
+                        ? "Loading..."
                         : tables.length === 0
-                          ? 'No table available'
-                          : 'Select table'
+                          ? "No table available"
+                          : "Select table"
                     }
                   />
                 </SelectTrigger>
@@ -316,14 +340,15 @@ export function LarkBitableImportForm({
               </Select>
               {tables.length === 0 && !loading && (
                 <p className="text-sm text-muted-foreground">
-                  No tables found in this Bitable. Please check the App ID and try again.
+                  No tables found in this Bitable. Please check the App ID and
+                  try again.
                 </p>
               )}
             </div>
           </div>
         )}
 
-        {step === 'mapping' && (
+        {step === "mapping" && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm">
               <ArrowLeft className="h-4 w-4 text-muted-foreground" />
@@ -336,25 +361,33 @@ export function LarkBitableImportForm({
             <div className="space-y-3">
               <div className="text-sm font-medium">Field Mapping</div>
               <p className="text-xs text-muted-foreground">
-                Map the table fields to the corresponding test case fields. Auto-mapping has been applied based on field names.
+                Map the table fields to the corresponding test case fields.
+                Auto-mapping has been applied based on field names.
               </p>
 
               <div className="space-y-3 pt-2">
                 {SYSTEM_FIELDS.map((sf) => (
-                  <div key={sf.key} className="grid grid-cols-[1fr,1.5fr] gap-3 items-center">
+                  <div
+                    key={sf.key}
+                    className="grid grid-cols-[1fr,1.5fr] gap-3 items-center"
+                  >
                     <div className="space-y-0.5">
                       <div className="text-sm font-medium">
                         {sf.label}
-                        {sf.required && <span className="text-destructive ml-1">*</span>}
+                        {sf.required && (
+                          <span className="text-destructive ml-1">*</span>
+                        )}
                       </div>
-                      <div className="text-xs text-muted-foreground">{sf.description}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {sf.description}
+                      </div>
                     </div>
                     <Select
-                      value={fieldMapping[sf.key] || '__none__'}
+                      value={fieldMapping[sf.key] || "__none__"}
                       onValueChange={(value) =>
                         setFieldMapping((prev) => ({
                           ...prev,
-                          [sf.key]: value === '__none__' ? '' : (value || ''),
+                          [sf.key]: value === "__none__" ? "" : value || "",
                         }))
                       }
                     >
@@ -362,7 +395,9 @@ export function LarkBitableImportForm({
                         <SelectValue placeholder="Select field" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__none__">-- Not mapped --</SelectItem>
+                        <SelectItem value="__none__">
+                          -- Not mapped --
+                        </SelectItem>
                         {tableFields.map((field) => (
                           <SelectItem key={field.id} value={field.name}>
                             {field.name} ({field.type})
@@ -379,28 +414,39 @@ export function LarkBitableImportForm({
       </div>
 
       <DialogFooter className="gap-2">
-        {step !== 'input' && (
-          <Button variant="outline" onClick={handleBack} disabled={loading || importing}>
+        {step !== "input" && (
+          <Button
+            variant="outline"
+            onClick={handleBack}
+            disabled={loading || importing}
+          >
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
           </Button>
         )}
-        <Button variant="outline" onClick={onCancel} disabled={loading || importing}>
+        <Button
+          variant="outline"
+          onClick={onCancel}
+          disabled={loading || importing}
+        >
           Cancel
         </Button>
-        {step === 'input' && (
+        {step === "input" && (
           <Button onClick={fetchTables} disabled={loading || !appId}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Next
           </Button>
         )}
-        {step === 'select' && (
-          <Button onClick={fetchTableFields} disabled={loading || !selectedTableId}>
+        {step === "select" && (
+          <Button
+            onClick={fetchTableFields}
+            disabled={loading || !selectedTableId}
+          >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Next
           </Button>
         )}
-        {step === 'mapping' && (
+        {step === "mapping" && (
           <Button onClick={handleImport} disabled={importing}>
             {importing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Import
@@ -414,12 +460,12 @@ export function LarkBitableImportForm({
 function LarkBitableImportDialogLayer({
   onFinish,
 }: {
-  onFinish: (result: 'success' | 'cancel') => void;
+  onFinish: (result: "success" | "cancel") => void;
 }) {
   const [open, setOpen] = useState(true);
   const settled = useRef(false);
 
-  const settle = (result: 'success' | 'cancel') => {
+  const settle = (result: "success" | "cancel") => {
     if (settled.current) return;
     settled.current = true;
     setOpen(false);
@@ -430,14 +476,14 @@ function LarkBitableImportDialogLayer({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) settle('cancel');
+        if (!next) settle("cancel");
       }}
     >
       <DialogContent className="max-w-lg">
         <LarkBitableImportForm
           pluginId={LARK_PLUGIN_ID}
-          onSuccess={() => settle('success')}
-          onCancel={() => settle('cancel')}
+          onSuccess={() => settle("success")}
+          onCancel={() => settle("cancel")}
         />
       </DialogContent>
     </Dialog>
@@ -455,27 +501,23 @@ export type OpenLarkBitableImportOptions = {
 export function openLarkBitableImportDialog(
   options?: OpenLarkBitableImportOptions,
 ): void {
-  if (typeof document === 'undefined') return;
+  if (typeof document === "undefined") return;
 
-  const host = document.createElement('div');
-  host.setAttribute('data-lark-bitable-import-root', '');
+  const host = document.createElement("div");
+  host.setAttribute("data-lark-bitable-import-root", "");
   document.body.appendChild(host);
 
   const root = createRoot(host);
 
-  const teardown = (result: 'success' | 'cancel') => {
+  const teardown = (result: "success" | "cancel") => {
     root.unmount();
     host.remove();
-    if (result === 'success') {
+    if (result === "success") {
       options?.onSuccess?.();
     }
   };
 
-  root.render(
-    <LarkBitableImportDialogLayer
-      onFinish={teardown}
-    />,
-  );
+  root.render(<LarkBitableImportDialogLayer onFinish={teardown} />);
 }
 
 /** Discover 的 label/icon + 点击拉起命令式弹窗（与 Lark 插件一体）。 */
@@ -495,7 +537,7 @@ export function LarkImportHeaderButton({
   return (
     <Button
       type="button"
-      variant={button.variant ?? 'outline'}
+      variant={button.variant ?? "outline"}
       onClick={() => {
         openLarkBitableImportDialog({
           onSuccess: () => {
@@ -514,4 +556,3 @@ export function LarkImportHeaderButton({
     </Button>
   );
 }
-

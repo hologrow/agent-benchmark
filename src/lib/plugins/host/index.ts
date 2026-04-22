@@ -4,9 +4,5 @@
  * - 浏览器：从 `./browser` 单独导入（避免服务端打包进 client 组件）
  */
 
-export type {
-  PluginHostContext,
-  TestCasePersistencePort,
-} from './types';
-export { createServerPluginHostContext } from './server';
-export { applyExternalTableSyncWithPersistence } from './apply-external-sync';
+export type { PluginHostContext, HostBridge } from "./types";
+export { createServerPluginHostContext } from "./server";

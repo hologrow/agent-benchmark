@@ -1,19 +1,15 @@
-'use client';
-
-/**
- * 浏览器：默认插件宿主（经站点 REST API 落库）。
- */
-
-import { api } from '@/lib/api';
-import type { CreateTestCaseRequest } from '@/types/api';
+"use client";
+import "client-only";
+import { api } from "@/lib/api";
+import type { CreateTestCaseRequest } from "@/types/api";
 import type {
   LegacySyncFetchResult,
   SyncTestCasesToDatabaseInput,
   SyncTestCasesToDatabaseResult,
-} from '@/lib/plugins/types';
-import type { LegacySyncParsedTestCasePayload } from '@/lib/plugins/types';
-import { applyExternalTableSyncWithPersistence } from './apply-external-sync';
-import type { PluginHostContext, TestCasePersistencePort } from './types';
+} from "@/lib/plugins/types";
+import type { LegacySyncParsedTestCasePayload } from "@/lib/plugins/types";
+import { applyExternalTableSyncWithPersistence } from "./apply-external-sync";
+import type { PluginHostContext, HostBridge } from "./types";
 
 function rowToCreateRequest(
   row: LegacySyncParsedTestCasePayload,
@@ -31,7 +27,7 @@ function rowToCreateRequest(
   };
 }
 
-function createBrowserTestCasePersistencePort(): TestCasePersistencePort {
+function createBrowserBridge(): HostBridge {
   return {
     async getAllTestCasesForSync() {
       const { testCases } = await api.testCases.list();
@@ -62,17 +58,18 @@ function createBrowserTestCasePersistencePort(): TestCasePersistencePort {
 }
 
 /** 默认单例端口（可按需在测试中替换为自定义 host）。 */
-const browserPortSingleton = createBrowserTestCasePersistencePort();
+const browserBridge = createBrowserBridge();
 
 export function createBrowserPluginHostContext(): PluginHostContext {
   return {
+    bridge: browserBridge,
     externalTableSync: {
       persistAfterFetch: (
         input: SyncTestCasesToDatabaseInput,
         fetchResult: LegacySyncFetchResult,
       ): Promise<SyncTestCasesToDatabaseResult> =>
         applyExternalTableSyncWithPersistence(
-          browserPortSingleton,
+          browserBridge,
           input,
           fetchResult,
         ),

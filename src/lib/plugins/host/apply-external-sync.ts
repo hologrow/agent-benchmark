@@ -1,21 +1,17 @@
-/**
- * 外部表 sync：fetch 完成后的通用落库编排（无 DB / 无 HTTP，仅依赖端口）。
- */
-
 import type {
   LegacySyncFetchResult,
   SyncTestCasesToDatabaseInput,
   SyncTestCasesToDatabaseResult,
-} from '@/lib/plugins/types';
-import type { TestCasePersistencePort } from './types';
+} from "@/lib/plugins/types";
+import type { HostBridge } from "./types";
 
 export async function applyExternalTableSyncWithPersistence(
-  port: TestCasePersistencePort,
+  port: HostBridge,
   input: SyncTestCasesToDatabaseInput,
   fetchResult: LegacySyncFetchResult,
 ): Promise<SyncTestCasesToDatabaseResult> {
   const {
-    syncMode = 'upsert',
+    syncMode = "upsert",
     createTestSet: shouldCreateTestSet = true,
     testSetName,
     testSetDescription,
@@ -37,7 +33,7 @@ export async function applyExternalTableSyncWithPersistence(
       errors: [
         fetchResult.apiError ||
           fetchResult.nonFatalErrors[0] ||
-          'External sync fetch failed',
+          "External sync fetch failed",
       ],
     };
   }
@@ -57,11 +53,11 @@ export async function applyExternalTableSyncWithPersistence(
     try {
       const existingRow = existingTestIdMap.get(testCase.test_id);
 
-      if (existingRow && syncMode !== 'create_only') {
+      if (existingRow && syncMode !== "create_only") {
         await port.updateTestCase(existingRow.id, testCase);
         updated++;
         createdTestCaseIds.push(existingRow.id);
-      } else if (!existingRow && syncMode !== 'update_only') {
+      } else if (!existingRow && syncMode !== "update_only") {
         const newTc = await port.createTestCase(testCase);
         created++;
         createdTestCaseIds.push(newTc.id);
@@ -88,7 +84,7 @@ export async function applyExternalTableSyncWithPersistence(
   if (shouldCreateTestSet && createdTestCaseIds.length > 0) {
     try {
       const dateStr = new Intl.DateTimeFormat(undefined, {
-        dateStyle: 'short',
+        dateStyle: "short",
       }).format(new Date());
       const defaultName =
         testSetName ||
@@ -101,7 +97,7 @@ export async function applyExternalTableSyncWithPersistence(
           description:
             testSetDescription ||
             `Synced from external table — ${createdTestCaseIds.length} test case(s)`,
-          source: 'lark',
+          source: "lark",
           source_url: `https://base.larkoffice.com/app/${appToken}/table/${tableId}`,
         },
         createdTestCaseIds,
