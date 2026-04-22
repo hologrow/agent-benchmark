@@ -113,26 +113,26 @@ export async function POST(
         try {
           const syncResult = await syncExecutionTraces(execution.id);
           console.log(`[Benchmark ${execution.id}] Trace sync done:`, syncResult);
-
-          if (benchmark.evaluator_id) {
-            console.log(`[Benchmark ${execution.id}] Triggering evaluation...`);
-            try {
-              const evalResponse = await fetch(`http://localhost:3000/api/executions/${execution.id}/evaluate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-              });
-              if (evalResponse.ok) {
-                console.log(`[Benchmark ${execution.id}] Evaluation started`);
-              } else {
-                const errorData = await evalResponse.json();
-                console.error(`[Benchmark ${execution.id}] Evaluation start failed:`, errorData);
-              }
-            } catch (evalError) {
-              console.error(`[Benchmark ${execution.id}] Failed to trigger evaluation:`, evalError);
-            }
-          }
         } catch (syncError) {
           console.error(`[Benchmark ${execution.id}] Trace sync failed:`, syncError);
+        }
+
+        if (benchmark.evaluator_id) {
+          console.log(`[Benchmark ${execution.id}] Triggering evaluation...`);
+          try {
+            const evalResponse = await fetch(`http://localhost:3000/api/executions/${execution.id}/evaluate`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            if (evalResponse.ok) {
+              console.log(`[Benchmark ${execution.id}] Evaluation started`);
+            } else {
+              const errorData = await evalResponse.json();
+              console.error(`[Benchmark ${execution.id}] Evaluation start failed:`, errorData);
+            }
+          } catch (evalError) {
+            console.error(`[Benchmark ${execution.id}] Failed to trigger evaluation:`, evalError);
+          }
         }
       }
     });
