@@ -2,15 +2,17 @@
  * Lark Bitable API：表/字段/记录拉取与解析（无持久化）。
  */
 
-import { Client, Domain } from "@larksuiteoapi/node-sdk";
+import { Client } from "@larksuiteoapi/node-sdk";
 import type {
   LegacySyncCatalogQuery,
   LegacySyncCatalogResult,
   LegacySyncFetchResult,
   LegacySyncParsedTestCasePayload,
   LegacySyncSystemField,
-  SyncTestCasesToDatabaseInput,
 } from "../../types";
+import type { SyncTestCasesInput } from "./api-types";
+import { getPlugin } from "../../route-utils";
+import { identity, map } from "ramda";
 
 export type {
   LegacySyncFetchResult,
@@ -41,6 +43,7 @@ function parseRecordToTestCase(
   record: Record<string, unknown>,
   columnMapping: Record<string, string>,
   index: number,
+  tableId: string,
 ): LegacySyncParsedTestCasePayload | null {
   const fields = record.fields as Record<string, unknown> | undefined;
   if (!fields) return null;
@@ -63,7 +66,7 @@ function parseRecordToTestCase(
     return null;
   }
 
-  const test_id = `TC_${String(index + 1).padStart(3, "0")}`;
+  const test_id = `TC_${tableId}_${String(index + 1).padStart(3, "0")}`;
   const name = input.slice(0, 50);
   const description = input.slice(0, 200);
   const how = getFieldValue("how");
@@ -176,17 +179,21 @@ export async function runLegacySyncCatalog(
   return { tables };
 }
 
-export async function fetchLegacyBitableRecordsForSync(
+export async function fetchBitableRecords(
   client: Client,
-  input: SyncTestCasesToDatabaseInput,
+  input: SyncTestCasesInput,
 ): Promise<LegacySyncFetchResult> {
   const { appToken, tableId, viewId, columnMapping } = input;
 
   const mapping = columnMapping || defaultColumnMapping();
-
+  const prepare = getPlugin("lark");
   const records: Record<string, unknown>[] = [];
   let hasMore = true;
   let pageToken: string | undefined;
+
+  if (!prepare.ok) {
+    throw new Error("lark plugin not load");
+  }
 
   while (hasMore) {
     const response = await client.bitable.appTableRecord.list({
@@ -218,24 +225,13 @@ export async function fetchLegacyBitableRecordsForSync(
     pageToken = response.data?.page_token;
   }
 
-  const rows: LegacySyncParsedTestCasePayload[] = [];
   const nonFatalErrors: string[] = [];
 
-  for (let i = 0; i < records.length; i++) {
-    const record = records[i];
-    try {
-      const testCase = parseRecordToTestCase(record, mapping, i);
-      if (!testCase) {
-        continue;
-      }
-      rows.push(testCase);
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      nonFatalErrors.push(
-        `Record ${(record as { record_id?: string }).record_id ?? i}: ${errorMsg}`,
-      );
-    }
-  }
+  const rows = records
+    .map((record, index) =>
+      parseRecordToTestCase(record, mapping, index, tableId),
+    )
+    .filter(identity) as LegacySyncParsedTestCasePayload[];
 
   let suggestedTestSetName: string | undefined;
   const dateStr = new Intl.DateTimeFormat(undefined, {

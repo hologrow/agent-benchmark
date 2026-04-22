@@ -2,28 +2,39 @@
  * Lark 插件：在 `/api/plugins/lark` 上注册的自定义路由（仍走服务端 Lark SDK）。
  */
 
-import { NextResponse } from "next/server";
 import { getPlugin } from "@/lib/plugins/route-utils";
-import { registerPluginHttpHandler } from "@/lib/plugins/plugin-http-routes";
-import type { SyncTestCasesToDatabaseInput } from "@/lib/plugins/types";
+import { NextResponse } from "next/server";
+
 import { LarkPlugin } from "@/lib/plugins/built-in/lark";
-import { fetchLegacyBitableRecordsForSync } from "@/lib/plugins/built-in/lark/bitable";
+import { fetchBitableRecords } from "@/lib/plugins/built-in/lark/bitable";
+import type { SyncTestCasesInput } from "./api-types";
+
+import { PluginHttpContext } from "../../registerRoutes";
 
 /** POST body：`{ route: 'bitable.fetchRecords', payload: SyncTestCasesToDatabaseInput }` */
 export const LARK_ROUTE_BITABLE_FETCH_RECORDS = "bitable.fetchRecords";
 
-function parseSyncInput(payload: unknown): SyncTestCasesToDatabaseInput | null {
+/** POST body：`{ route: 'bitable.syncToTestCases', payload: SyncTestCasesToDatabaseInput }` — 拉取、解析并落库 */
+export const LARK_ROUTE_BITABLE_SYNC_TO_TEST_CASES = "bitable.syncToTestCases";
+
+function parseSyncInput(payload: unknown): SyncTestCasesInput | null {
   if (!payload || typeof payload !== "object") {
     return null;
   }
   const p = payload as Record<string, unknown>;
+  const appToken =
+    typeof p.appToken === "string" ? p.appToken : String(p.appToken ?? "");
   const tableId =
     typeof p.tableId === "string" ? p.tableId : String(p.tableId ?? "");
+  if (!appToken || !tableId) {
+    return null;
+  }
 
   return {
+    appToken,
     tableId,
     viewId: p.viewId != null ? String(p.viewId) : undefined,
-    syncMode: p.syncMode as SyncTestCasesToDatabaseInput["syncMode"],
+    syncMode: p.syncMode as SyncTestCasesInput["syncMode"],
     columnMapping:
       p.columnMapping && typeof p.columnMapping === "object"
         ? (p.columnMapping as Record<string, string>)
@@ -36,12 +47,17 @@ function parseSyncInput(payload: unknown): SyncTestCasesToDatabaseInput | null {
   };
 }
 
-registerPluginHttpHandler("lark", async (ctx) => {
+export default async (ctx: PluginHttpContext) => {
   if (ctx.method !== "POST" || ctx.jsonBody === null) {
     return null;
   }
   const body = ctx.jsonBody as { route?: string; payload?: unknown };
-  if (body.route !== LARK_ROUTE_BITABLE_FETCH_RECORDS) {
+  const route = body.route;
+
+  const isBitableRoute =
+    route === LARK_ROUTE_BITABLE_FETCH_RECORDS ||
+    route === LARK_ROUTE_BITABLE_SYNC_TO_TEST_CASES;
+  if (!isBitableRoute) {
     return null;
   }
 
@@ -65,17 +81,27 @@ registerPluginHttpHandler("lark", async (ctx) => {
   }
 
   try {
-    const client = prepared.plugin.createBitableSyncClient();
-    const fetchResult = await fetchLegacyBitableRecordsForSync(client, input);
-    return NextResponse.json({ fetchResult });
+    switch (route) {
+      case LARK_ROUTE_BITABLE_FETCH_RECORDS: {
+        const client = prepared.plugin.createBitableSyncClient();
+        const fetchResult = await fetchBitableRecords(client, input);
+        return NextResponse.json(fetchResult);
+      }
+      case LARK_ROUTE_BITABLE_SYNC_TO_TEST_CASES: {
+        const syncResult = await prepared.plugin.syncBitableToTestCases(input);
+        return NextResponse.json(syncResult);
+      }
+      default:
+        return null;
+    }
   } catch (error) {
-    console.error("[lark plugin-http] bitable.fetchRecords", error);
+    console.error(`[lark plugin-http] ${route}`);
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Failed to fetch records",
+          error instanceof Error ? error.message : "Bitable request failed",
       },
       { status: 500 },
     );
   }
-});
+};

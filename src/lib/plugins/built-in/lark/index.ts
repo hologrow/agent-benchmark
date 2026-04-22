@@ -14,7 +14,15 @@ import {
   type ImportSchemaSource,
   type TestCaseData,
 } from "../../";
-import type { IPlugin } from "../../types";
+import type {
+  IPlugin,
+  LegacySyncFetchResult,
+  SyncTestCasesToDatabaseResult,
+} from "../../types";
+import type { SyncTestCasesInput } from "./api-types";
+import { createServerPluginHostContext } from "../../host/server";
+import { fetchBitableRecords } from "./bitable";
+import { indexBy, prop } from "ramda";
 
 interface LarkConfig {
   appId: string;
@@ -92,6 +100,132 @@ export class LarkPlugin extends BasePlugin {
       return this.getClient();
     }
     throw new Error("lark require appSecret  & appid");
+  }
+
+  /**
+   * 同步 Bitable 到本地测试用例：服务端拉取、解析并落库（含可选测试集）。
+   */
+  async syncBitableToTestCases(
+    input: SyncTestCasesInput,
+  ): Promise<SyncTestCasesToDatabaseResult> {
+    const client = this.createBitableSyncClient();
+    const fetchResult: LegacySyncFetchResult = await fetchBitableRecords(
+      client,
+      input,
+    );
+    const { bridge } = createServerPluginHostContext();
+
+    const {
+      syncMode = "upsert",
+      createTestSet: shouldCreateTestSet = true,
+      testSetName,
+      testSetDescription,
+      appToken,
+      tableId,
+    } = input;
+
+    const nonFatal = fetchResult.nonFatalErrors ?? [];
+    const fetchError =
+      !fetchResult.success || fetchResult.apiError
+        ? fetchResult.apiError || nonFatal[0] || "External sync fetch failed"
+        : undefined;
+
+    if (fetchError) {
+      return {
+        success: false,
+        stats: {
+          total: 0,
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          errors: 1,
+        },
+        testSet: null,
+        errors: [fetchError],
+      };
+    }
+
+    const rows = fetchResult.rows;
+    const existing = await bridge.getAllTestCases();
+    const existingTestIdMap = indexBy(prop("test_id"), existing);
+
+    let created = 0;
+    let updated = 0;
+    let skipped = fetchResult.rawRecordCount - rows.length;
+    const errors: string[] = [...nonFatal];
+    const createdTestCaseIds: number[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const testCase = rows[i];
+      try {
+        const existingRow = existingTestIdMap[testCase.test_id];
+        if (existingRow && syncMode !== "create_only") {
+          await bridge.updateTestCase(existingRow.id, testCase);
+          updated++;
+          createdTestCaseIds.push(existingRow.id);
+        } else if (!existingRow && syncMode !== "update_only") {
+          const newTc = await bridge.createTestCase(testCase);
+          created++;
+          createdTestCaseIds.push(newTc.id);
+          existingTestIdMap[testCase.test_id] = {
+            id: newTc.id,
+            test_id: testCase.test_id,
+          };
+        } else if (existingRow) {
+          createdTestCaseIds.push(existingRow.id);
+          skipped++;
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        errors.push(`Row ${i + 1} (${testCase.test_id}): ${errorMsg}`);
+      }
+    }
+
+    let testSet: {
+      id: number;
+      name: string;
+      testCaseCount: number;
+    } | null = null;
+
+    if (shouldCreateTestSet && createdTestCaseIds.length > 0) {
+      try {
+        const dateStr = new Intl.DateTimeFormat(undefined, {
+          dateStyle: "short",
+        }).format(new Date());
+        const defaultName =
+          testSetName ||
+          fetchResult.suggestedTestSetName ||
+          `External sync - ${dateStr}`;
+
+        testSet = await bridge.createTestSet(
+          {
+            name: defaultName,
+            description:
+              testSetDescription ||
+              `Synced from external table — ${createdTestCaseIds.length} test case(s)`,
+            source: "lark",
+            source_url: `https://base.larkoffice.com/app/${appToken}/table/${tableId}`,
+          },
+          createdTestCaseIds,
+        );
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        errors.push(`Failed to create test set: ${errorMsg}`);
+      }
+    }
+
+    return {
+      success: true,
+      stats: {
+        total: fetchResult.rawRecordCount,
+        created,
+        updated,
+        skipped,
+        errors: errors.length,
+      },
+      testSet,
+      errors: errors.slice(0, 10),
+    };
   }
 
   private async _listImportSources(): Promise<ImportSchemaSource[]> {
@@ -219,7 +353,7 @@ export class LarkPlugin extends BasePlugin {
 
   /**
    * Batch import test cases（仅拉取并解析，不落库）。
-   * 浏览器 Bitable 向导应走 `/api/plugins/lark` 拉数 + `host.bridge.persistAfterFetch`，或 POST `/api/test-cases/sync` 一站式同步。
+   * 浏览器 Bitable 向导应走 `POST /api/plugins/lark` 且 `route: bitable.syncToTestCases` 一站式同步。
    * @param items Format: ["baseId/tableId"]
    */
   private async _importItems(

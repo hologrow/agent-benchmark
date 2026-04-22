@@ -12,6 +12,7 @@ import { builtInPluginEntry as langfuseEntry } from "./built-in/langfuse/index";
 import { builtInPluginEntry as larkEntry } from "./built-in/lark/index";
 import { pluginRegistry } from "./registry";
 import { getAllIntegrations } from "../db";
+import { registerPluginHttpHandler } from "./registerRoutes";
 
 /** Bundled factory for register / ensure helpers. */
 export type BuiltInPluginFactory = { id: string; create: () => IPlugin };
@@ -24,9 +25,10 @@ const BUILT_IN_REGISTRY: Record<string, BuiltInPluginFactory> = {
 const BUILT_IN_LAYOUT_ROOT = join(process.cwd(), "src/lib/plugins/built-in");
 
 /**
- * Ordered list: directory names from fs (when cwd has `src/`), intersected with {@link BUILT_IN_REGISTRY}.
+ * `built-in/<name>/` 下的子目录名（与 {@link BUILT_IN_LAYOUT_ROOT} 扫描规则一致）。
+ * 开发环境有 `src/` 时走磁盘；否则回退为 {@link BUILT_IN_REGISTRY} 的 id（如 standalone 无源码树）。
  */
-export function getBuiltInPluginFactoriesFromLayout(): BuiltInPluginFactory[] {
+export function getBuiltInPluginLayoutDirNames(): string[] {
   const dirNames = existsSync(BUILT_IN_LAYOUT_ROOT)
     ? readdirSync(BUILT_IN_LAYOUT_ROOT, { withFileTypes: true })
         .filter(
@@ -36,10 +38,41 @@ export function getBuiltInPluginFactoriesFromLayout(): BuiltInPluginFactory[] {
             d.name !== "node_modules",
         )
         .map((d) => d.name)
-    : Object.keys(BUILT_IN_REGISTRY).sort();
+    : Object.keys(BUILT_IN_REGISTRY);
+  return [...dirNames].sort();
+}
+
+export async function loadBuiltInPluginHttpRoutesFromLayout(): Promise<void> {
+  for (const name of getBuiltInPluginLayoutDirNames()) {
+    try {
+      const handler = await import(`./built-in/${name}/routes`);
+      registerPluginHttpHandler(name, handler.default || handler);
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException & { message?: string };
+      const notFound =
+        err?.code === "MODULE_NOT_FOUND" ||
+        err?.code === "ERR_MODULE_NOT_FOUND" ||
+        (typeof err?.message === "string" &&
+          err.message.includes("Cannot find module"));
+      if (notFound) {
+        continue;
+      }
+      console.warn(
+        `[PluginLoader] plugin-http-routes for "${name}" failed:`,
+        e,
+      );
+    }
+  }
+}
+
+/**
+ * Ordered list: directory names from fs (when cwd has `src/`), intersected with {@link BUILT_IN_REGISTRY}.
+ */
+export function getBuiltInPluginFactoriesFromLayout(): BuiltInPluginFactory[] {
+  const dirNames = getBuiltInPluginLayoutDirNames();
 
   const list: BuiltInPluginFactory[] = [];
-  for (const name of dirNames.sort()) {
+  for (const name of dirNames) {
     const factory = BUILT_IN_REGISTRY[name];
     if (!factory) {
       console.warn(

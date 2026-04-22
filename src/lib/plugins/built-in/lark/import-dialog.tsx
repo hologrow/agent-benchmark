@@ -26,18 +26,20 @@ import { toast } from "sonner";
 import type { ImportButtonUI } from "@/types/api";
 import type { LarkField, LarkTable } from "./api-types";
 import {
-  getBitTableData,
   larkListImportFields,
   larkListImportTables,
+  syncBitableToTestCases,
 } from "./browser-api";
-import type { SyncTestCasesToDatabaseInput } from "@/lib/plugins/types";
-import { createBrowserPluginHostContext } from "../../host/browser";
+import type { SyncTestCasesInput } from "./api-types";
+import { indexBy, prop } from "ramda";
+
+type Callback = () => void;
 
 /** Lark Bitable 向导表单 props */
 export type LarkBitableImportFormProps = {
   pluginId: string;
-  onSuccess?: () => void;
-  onCancel?: () => void;
+  onSuccess?: Callback;
+  onCancel?: Callback;
 };
 
 const LARK_PLUGIN_ID = "lark";
@@ -89,37 +91,28 @@ export function LarkBitableImportForm({
   onCancel,
 }: LarkBitableImportFormProps) {
   const [loading, setLoading] = useState(false);
-  const host = useMemo(() => createBrowserPluginHostContext(), []);
   const [importing, setImporting] = useState(false);
   const [tables, setTables] = useState<LarkTable[]>([]);
   const [tableFields, setTableFields] = useState<LarkField[]>([]);
   const [appId, setAppId] = useState("");
+  const appIdInputRef = useRef<HTMLInputElement>(null);
   const [selectedTableId, setSelectedTableId] = useState("");
   const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<"input" | "select" | "mapping">("input");
 
-  const extractAppIdFromUrl = (url: string): string => {
-    const match = url.match(/base\/([a-zA-Z0-9]+)/);
-    return match ? match[1] : url.trim();
-  };
-
-  const handleAppIdChange = (value: string) => {
-    const extracted = extractAppIdFromUrl(value);
-    setAppId(extracted);
-    setError(null);
-  };
-
   const fetchTables = async () => {
-    if (!appId) {
+    const raw = appIdInputRef.current?.value.trim() ?? "";
+    if (!raw) {
       toast.error("Please enter App ID");
       return;
     }
+    setAppId(raw);
 
     setLoading(true);
     setError(null);
     try {
-      const data = await larkListImportTables(pluginId, appId);
+      const data = await larkListImportTables(pluginId, raw);
       setTables(data.tables || []);
       if (data.tables?.length > 0) {
         setSelectedTableId(data.tables[0].id);
@@ -190,18 +183,13 @@ export function LarkBitableImportForm({
 
     setImporting(true);
     try {
-      const syncInput: SyncTestCasesToDatabaseInput = {
+      const syncInput: SyncTestCasesInput = {
         appToken: appId,
         tableId: selectedTableId,
         columnMapping: fieldMapping,
-        syncMode: "upsert",
         createTestSet: true,
       };
-      const { fetchResult } = await getBitTableData(pluginId, syncInput);
-      const result = await host.bridge.persistAfterFetch(
-        syncInput,
-        fetchResult,
-      );
+      const result = await syncBitableToTestCases(pluginId, syncInput);
 
       if (!result.success) {
         const msg =
@@ -267,6 +255,8 @@ export function LarkBitableImportForm({
     }
   };
 
+  const tableMap = useMemo(() => indexBy(prop("id"), tables), [tables]);
+
   return (
     <>
       <DialogHeader>
@@ -287,12 +277,12 @@ export function LarkBitableImportForm({
 
         {step === "input" && (
           <div className="space-y-2">
-            <Label htmlFor="app-id">App ID (Base Token)</Label>
+            <Label htmlFor="app-id">Base id</Label>
             <Input
               id="app-id"
-              placeholder="e.g., BvG2bY5P0aabcdefg123 or paste the full URL"
-              value={appId}
-              onChange={(e) => handleAppIdChange(e.target.value)}
+              ref={appIdInputRef}
+              placeholder="e.g., BvG2bY5P0aabcdefg123"
+              defaultValue={appId}
               disabled={loading}
             />
             <div className="flex items-start gap-2 text-xs text-muted-foreground">
@@ -300,7 +290,7 @@ export function LarkBitableImportForm({
               <div>
                 <p>Copy the App ID from your Bitable URL:</p>
                 <p className="mt-1 font-mono bg-muted px-1.5 py-0.5 rounded">
-                  https://example.feishu.cn/base/
+                  https://example.sg.larksuite.com/wiki/
                   <span className="text-primary font-semibold">AbCdEfG123</span>
                 </p>
                 <p className="mt-1">
@@ -328,15 +318,7 @@ export function LarkBitableImportForm({
                 disabled={loading || tables.length === 0}
               >
                 <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      loading
-                        ? "Loading..."
-                        : tables.length === 0
-                          ? "No table available"
-                          : "Select table"
-                    }
-                  />
+                  {tableMap[selectedTableId]?.name || "No table available"}
                 </SelectTrigger>
                 <SelectContent>
                   {tables.map((table) => (
@@ -440,7 +422,7 @@ export function LarkBitableImportForm({
           Cancel
         </Button>
         {step === "input" && (
-          <Button onClick={fetchTables} disabled={loading || !appId}>
+          <Button onClick={fetchTables} disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Next
           </Button>
@@ -503,9 +485,6 @@ export type OpenLarkBitableImportOptions = {
   onSuccess?: () => void;
 };
 
-/**
- * 命令式打开 Lark 导入弹窗：`createRoot` 挂到 `document.body` 下独立节点，页面无需包含任何 Dialog 子树。
- */
 export function openLarkBitableImportDialog(
   options?: OpenLarkBitableImportOptions,
 ): void {

@@ -1,33 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPlugin } from "@/lib/plugins/route-utils";
-import { invokePluginHttpHandler } from "@/lib/plugins/plugin-http-routes";
+import { invokePluginHttpHandler } from "@/lib/plugins/registerRoutes";
 import {
   hasImportSchemaMethods,
   type ImportTestCasesPlugin,
 } from "@/lib/plugins/types";
 
-import "@/lib/plugins/built-in/lark/plugin-http-routes";
-
-const IMPORT_ACTIONS = [
+const IMPORT_ROUTES = [
   "listImportSources",
   "listImportTables",
   "listImportFields",
   "importTestCases",
 ] as const;
 
-type ImportAction = (typeof IMPORT_ACTIONS)[number];
+type ImportRoute = (typeof IMPORT_ROUTES)[number];
 
-function isImportAction(s: string): s is ImportAction {
-  return (IMPORT_ACTIONS as readonly string[]).includes(s);
+function isImportRoute(s: string): s is ImportRoute {
+  return (IMPORT_ROUTES as readonly string[]).includes(s);
 }
 
-function parseJsonBody(request: NextRequest): Promise<unknown> {
-  return request
-    .text()
-    .then((t) => (t ? JSON.parse(t) : {}))
-    .catch(() => {
-      throw new SyntaxError("Invalid JSON");
-    });
+async function parseJsonBody(request: NextRequest): Promise<unknown> {
+  try {
+    const t = await request.text();
+    return t ? JSON.parse(t) : {};
+  } catch {
+    throw new SyntaxError("Invalid JSON");
+  }
 }
 
 export async function POST(
@@ -44,11 +42,26 @@ export async function POST(
 
   const bodyObj = parsed as {
     route?: string;
-    action?: string;
     payload?: Record<string, unknown>;
   };
 
-  if (typeof bodyObj.route === "string") {
+  const route = typeof bodyObj.route === "string" ? bodyObj.route.trim() : "";
+
+  if (!route) {
+    return NextResponse.json(
+      {
+        error: 'Missing non-empty "route" in body',
+        examples: [
+          "listImportTables",
+          "listImportFields",
+          "bitable.syncToTestCases",
+        ],
+      },
+      { status: 400 },
+    );
+  }
+
+  try {
     const delegated = await invokePluginHttpHandler(pluginId, {
       pluginId,
       request,
@@ -58,38 +71,22 @@ export async function POST(
     if (delegated) {
       return delegated;
     }
-    return NextResponse.json(
-      { error: `Unknown route: ${bodyObj.route}`, pluginId },
-      { status: 404 },
-    );
-  }
 
-  try {
     const prepared = getPlugin(pluginId);
     if (!prepared.ok) {
       return prepared.response;
     }
 
-    const { action, payload = {} } = bodyObj;
+    const payload = bodyObj.payload ?? {};
 
-    if (!action || typeof action !== "string") {
+    if (!isImportRoute(route)) {
       return NextResponse.json(
-        {
-          error: 'Missing "action" in body (or use { route } for plugin HTTP)',
-          allowed: [...IMPORT_ACTIONS],
-        },
-        { status: 400 },
+        { error: `Unknown route: ${route}`, pluginId },
+        { status: 404 },
       );
     }
 
-    if (!isImportAction(action)) {
-      return NextResponse.json(
-        { error: `Unknown action: ${action}`, allowed: [...IMPORT_ACTIONS] },
-        { status: 400 },
-      );
-    }
-
-    return await handleImportAction(prepared.plugin, action, payload);
+    return await handleImportRoute(prepared.plugin, route, payload);
   } catch (error) {
     console.error(`[plugins/${pluginId}]`, error);
     return NextResponse.json(
@@ -99,12 +96,12 @@ export async function POST(
   }
 }
 
-async function handleImportAction(
+async function handleImportRoute(
   plugin: ImportTestCasesPlugin,
-  action: ImportAction,
+  route: ImportRoute,
   payload: Record<string, unknown>,
 ): Promise<NextResponse> {
-  switch (action) {
+  switch (route) {
     case "listImportSources": {
       if (!hasImportSchemaMethods(plugin)) {
         return NextResponse.json(

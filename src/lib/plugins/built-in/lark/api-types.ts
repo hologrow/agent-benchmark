@@ -43,3 +43,16 @@ export type LarkImportRequest = ImportTestCasesRequest;
 
 /** @deprecated 使用 {@link ImportTestCasesResponse} */
 export type LarkImportResponse = ImportTestCasesResponse;
+
+/** Bitable 同步到本地测试用例的请求体（拉数 / 落库）。 */
+export interface SyncTestCasesInput {
+  /** Bitable / 多维表 App token（Base token） */
+  appToken: string;
+  tableId: string;
+  viewId?: string;
+  syncMode?: "upsert" | "create_only" | "update_only";
+  columnMapping?: Record<string, string>;
+  createTestSet?: boolean;
+  testSetName?: string;
+  testSetDescription?: string;
+}

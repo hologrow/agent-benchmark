@@ -1,3 +1,5 @@
+import "server-only";
+
 export * from "./types";
 export * from "./registry";
 export * from "./base";
@@ -8,5 +10,5 @@ export { createServerPluginHostContext } from "./host/server";
 export {
   registerPluginHttpHandler,
   invokePluginHttpHandler,
-} from "./plugin-http-routes";
-export type { PluginHttpContext, PluginHttpHandler } from "./plugin-http-routes";
+} from "./registerRoutes";
+export type { PluginHttpContext, PluginHttpHandler } from "./registerRoutes";

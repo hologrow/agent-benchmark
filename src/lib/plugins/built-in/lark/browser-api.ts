@@ -3,12 +3,9 @@
  */
 
 import { apiRequest } from "@/lib/api-request";
-import type {
-  LegacySyncFetchResult,
-  SyncTestCasesToDatabaseInput,
-  SyncTestCasesToDatabaseResult,
-} from "@/lib/plugins/types";
-import type { PluginImportCommand } from "@/types/api";
+import type { BitableFetchJson, SyncTestCasesToDatabaseResult } from "@/lib/plugins/types";
+import type { SyncTestCasesInput } from "./api-types";
+import type { PluginPayload } from "@/types/api";
 import type {
   ListLarkFieldsResponse,
   ListLarkTablesResponse,
@@ -16,7 +13,7 @@ import type {
 
 async function postPluginImport<T>(
   pluginId: string,
-  command: PluginImportCommand,
+  command: PluginPayload,
 ): Promise<T> {
   return apiRequest<T>(`/api/plugins/${encodeURIComponent(pluginId)}`, {
     method: "POST",
@@ -30,7 +27,7 @@ export function larkListImportTables(
   sourceId: string,
 ): Promise<ListLarkTablesResponse> {
   return postPluginImport(pluginId, {
-    action: "listImportTables",
+    route: "listImportTables",
     payload: { sourceId },
   });
 }
@@ -42,24 +39,45 @@ export function larkListImportFields(
   tableId: string,
 ): Promise<ListLarkFieldsResponse> {
   return postPluginImport(pluginId, {
-    action: "listImportFields",
+    route: "listImportFields",
     payload: { sourceId, tableId },
   });
 }
 
 /**
- * 仅拉数不落库：走 `POST /api/plugins/:pluginId` 插件路由 `bitable.fetchRecords`（服务端 Lark SDK）。
+ * 仅拉数不落库：`POST /api/plugins/:pluginId`，body `{ route: 'bitable.fetchRecords', payload }`；
+ * 响应体为顶层 JSON，与 {@link BitableFetchJson} 一致（非 `{ fetchResult: ... }` 包裹）。
  */
 export function getBitTableData(
   pluginId: string,
-  payload: SyncTestCasesToDatabaseInput,
-): Promise<{ fetchResult: LegacySyncFetchResult }> {
-  return apiRequest<{ fetchResult: LegacySyncFetchResult }>(
+  payload: SyncTestCasesInput,
+): Promise<BitableFetchJson> {
+  return apiRequest<BitableFetchJson>(
     `/api/plugins/${encodeURIComponent(pluginId)}`,
     {
       method: "POST",
       body: JSON.stringify({
         route: "bitable.fetchRecords",
+        payload,
+      }),
+    },
+  );
+}
+
+/**
+ * 同步 Bitable 到测试用例：服务端拉取、解析并落库。
+ * `POST /api/plugins/:pluginId`，body `{ route: 'bitable.syncToTestCases', payload }`。
+ */
+export function syncBitableToTestCases(
+  pluginId: string,
+  payload: SyncTestCasesInput,
+): Promise<SyncTestCasesToDatabaseResult> {
+  return apiRequest<SyncTestCasesToDatabaseResult>(
+    `/api/plugins/${encodeURIComponent(pluginId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        route: "bitable.syncToTestCases",
         payload,
       }),
     },

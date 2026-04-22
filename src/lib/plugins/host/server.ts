@@ -5,12 +5,11 @@ import "server-only";
 
 import { createTestCase, getAllTestCases, updateTestCase } from "@/lib/db";
 import { createTestSet } from "@/lib/db/testset";
-import { applyExternalTableSyncWithPersistence } from "./apply-external-sync";
 import type { PluginHostContext, HostBridge } from "./types";
 
 function createServerBridge(): HostBridge {
   const bridge: HostBridge = {
-    async getAllTestCasesForSync() {
+    async getAllTestCases() {
       return getAllTestCases().map((tc) => ({
         id: tc.id,
         test_id: tc.test_id,
@@ -30,9 +29,6 @@ function createServerBridge(): HostBridge {
         name: ts.name,
         testCaseCount: testCaseIds.length,
       };
-    },
-    async persistAfterFetch(input, fetchResult) {
-      return applyExternalTableSyncWithPersistence(bridge, input, fetchResult);
     },
   };
   return bridge;

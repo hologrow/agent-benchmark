@@ -106,16 +106,6 @@ export interface LegacySyncCatalogResult {
   permissionHint?: string;
 }
 
-export interface SyncTestCasesToDatabaseInput {
-  tableId: string;
-  viewId?: string;
-  syncMode?: "upsert" | "create_only" | "update_only";
-  columnMapping?: Record<string, string>;
-  createTestSet?: boolean;
-  testSetName?: string;
-  testSetDescription?: string;
-}
-
 export interface SyncTestCasesToDatabaseResult {
   success: boolean;
   stats: {
@@ -133,7 +123,7 @@ export interface SyncTestCasesToDatabaseResult {
   errors: string[];
 }
 
-/** One parsed row ready for HostBridge CRUD / persistAfterFetch（plugins/host）。 */
+/** 解析后的单行用例载荷，供 HostBridge CRUD 与落库桥接使用。 */
 export interface LegacySyncParsedTestCasePayload {
   test_id: string;
   name: string;
@@ -159,6 +149,9 @@ export interface LegacySyncFetchResult {
   /** Set when the external list API fails entirely. */
   apiError?: string;
 }
+
+/** `getBitTableData` / 插件拉数接口返回的 JSON 本体（与 {@link LegacySyncFetchResult} 同形，顶层字段）。 */
+export type BitableFetchJson = LegacySyncFetchResult;
 
 export interface CapabilityInterfaces {
   [Capability.IMPORT_TEST_CASES]: {

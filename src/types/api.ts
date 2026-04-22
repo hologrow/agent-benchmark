@@ -339,20 +339,20 @@ export interface ImportTestCasesResponse {
 
 /**
  * Single endpoint: POST /api/plugins/:pluginId
- * Body: { action, payload? }
+ * Body: { route: string, payload? } — 与插件自定义 HTTP（如 `bitable.*`）同一套字段。
  */
-export const PLUGIN_IMPORT_ACTIONS = [
+export const PLUGIN_IMPORT_ROUTES = [
   "listImportSources",
   "listImportTables",
   "listImportFields",
   "importTestCases",
 ] as const;
 
-export type PluginImportAction = (typeof PLUGIN_IMPORT_ACTIONS)[number];
+export type PluginImportRoute = (typeof PLUGIN_IMPORT_ROUTES)[number];
 
-export interface PluginImportCommand {
-  action: PluginImportAction;
-  payload?: Record<string, unknown>;
+export interface PluginPayload<T = Record<string, unknown>> {
+  route: string;
+  payload?: T;
 }
 
 // RL Training types
