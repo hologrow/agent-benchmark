@@ -11,13 +11,17 @@ import {
   GraduationCap,
 } from "lucide-react";
 
+const showRLTraining = process.env.RL_TRAINING === "1";
+
 const navItems = [
   { href: "/", label: "Benchmark Scores", icon: BarChart3 },
   { href: "/test-sets", label: "Test Sets", icon: FolderOpen },
   { href: "/benchmarks", label: "Benchmarks", icon: PlayCircle },
-  { href: "/rl-training", label: "RL Training", icon: GraduationCap },
+  showRLTraining
+    ? { href: "/rl-training", label: "RL Training", icon: GraduationCap }
+    : null,
   { href: "/settings", label: "Settings", icon: Settings },
-];
+].filter((v) => !!v);
 
 export function NavBar() {
   const pathname = usePathname();

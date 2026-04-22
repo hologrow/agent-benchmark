@@ -2,104 +2,104 @@
 
 ![workflow](./workflow.png)
 
-AI Agent Benchmark 平台，用于执行、评估和管理 AI Agent 的测试用例。
+AI Agent Benchmark Platform for executing, evaluating, and managing AI Agent test cases.
 
-## 功能特性
+## Features
 
-1. **Benchmark 展示** - 查看用例输入、期望输出、实际输出、关键测试点、禁止点和评分
-2. **测试集管理** - 管理测试用例，支持从 Lark（飞书）多维表格同步
-3. **Agent 管理** - 配置 Agent 名称和 ACPX 参数
-4. **评估器管理** - 配置评估器，支持变量引用上下文
-5. **Benchmark 跑测试管理** - 启动测试执行，支持变量注入格式要求
+1. **Benchmark Dashboard** - View test case input, expected output, actual output, key test points, forbidden points, and scores
+2. **Test Set Management** - Manage test cases with support for syncing from Lark/Feishu Bitable
+3. **Agent Management** - Configure Agent names and ACPX parameters
+4. **Evaluator Management** - Configure evaluators with variable reference support for context
+5. **Benchmark Execution** - Launch test execution with support for variable injection and format requirements
 
-## 技术栈
+## Tech Stack
 
-- **前端**: Next.js 15 + React + TypeScript + Tailwind CSS + shadcn/ui
-- **后端**: Next.js API Routes + SQLite (better-sqlite3)
-- **执行引擎**: Python 3 + ACPX 协议
+- **Frontend**: Next.js 16 + React 19 + TypeScript + Tailwind CSS 4 + shadcn/ui
+- **Backend**: Next.js API Routes + SQLite (better-sqlite3)
+- **Execution Engine**: Python 3.12+ with ACPX protocol
 
-## 快速开始
+## Quick Start
 
-### 1. 安装依赖
+### 1. Install Dependencies
 
 ```bash
 cd benchmark-runner
 npm install
 ```
 
-### 2. 配置环境
+### 2. Configure Environment
 
-确保系统中已安装：
+Ensure the following are installed on your system:
 - Node.js 18+
-- Python 3.8+
-- ACPX CLI (用于执行 Agent)
+- Python 3.12+
+- ACPX CLI (for executing Agents)
 
-创建 `.env.local` 文件并配置环境变量：
+Create `.env.local` file and configure environment variables:
 
 ```bash
-# 数据库路径（可选，默认 data/benchmark.db）
+# Database path (optional, defaults to data/benchmark.db)
 DATABASE_PATH=data/benchmark.db
 
-# Lark (飞书) 应用凭证（用于同步多维表格）
-# 支持飞书国内版 (feishu) 和 Lark 国际版 (lark)
+# Lark/Feishu app credentials (for syncing Bitable)
+# Supports Feishu China (feishu) and Lark International (lark)
 LARK_APP_ID=cli_xxxxxxxxxxxxxxxx
 LARK_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-# LARK_APP_TYPE=feishu  # 可选：feishu (默认) 或 lark
+# LARK_APP_TYPE=feishu  # Optional: feishu (default) or lark
 ```
 
-#### 配置 Lark 多维表格同步
+#### Configuring Lark Bitable Sync
 
-1. **国内用户（飞书）**:
-   - 在 [飞书开放平台](https://open.feishu.cn/) 创建企业自建应用
-   - 使用 `LARK_APP_TYPE=feishu` (或不设置，默认为国内版)
+1. **China Users (Feishu)**:
+   - Create an enterprise self-built app on [Feishu Open Platform](https://open.feishu.cn/)
+   - Use `LARK_APP_TYPE=feishu` (or leave unset, defaults to China version)
 
-2. **海外用户（Lark）**:
-   - 在 [Lark Developer Portal](https://open.larkoffice.com/) 创建应用
-   - 设置 `LARK_APP_TYPE=lark`
+2. **International Users (Lark)**:
+   - Create an app on [Lark Developer Portal](https://open.larkoffice.com/)
+   - Set `LARK_APP_TYPE=lark`
 
-3. 启用 `bitable:record:read` 权限（读取多维表格记录）
-4. 发布应用并获取 App ID 和 App Secret
-5. 将多维表格分享给应用（在表格中添加应用为协作者）
+3. Enable `bitable:record:read` permission (read Bitable records)
+4. Publish the app and obtain App ID and App Secret
+5. Share the Bitable with the app (add the app as a collaborator in the table)
 
-### 3. 运行开发服务器
+### 3. Run Development Server
 
 ```bash
 npm run dev
 ```
 
-访问 http://localhost:3000
+Visit http://localhost:3000
 
-## 使用流程
+## Usage Workflow
 
-1. **创建 Agent** - 在 Agent 管理页面添加 Agent 名称和 ACPX 配置
-2. **创建测试用例** - 在测试集管理页面添加测试用例
-3. **创建评估器** - 在评估器管理页面配置评估规则（可选）
-4. **创建 Benchmark** - 在跑测试管理页面选择 Agents、测试用例和评估器
-5. **执行 Benchmark** - 点击执行按钮启动测试
-6. **查看结果** - 在 Benchmark 展示页面查看详细结果和评分
+1. **Create Agent** - Add Agent name and ACPX configuration in the Agent management page
+2. **Create Test Cases** - Add test cases in the Test Set management page
+3. **Create Evaluator** - Configure evaluation rules in the Evaluator management page (optional)
+4. **Create Benchmark** - Select Agents, test cases, and evaluator in the Benchmark execution page
+5. **Execute Benchmark** - Click the execute button to start testing
+6. **View Results** - View detailed results and scores on the Benchmark dashboard
 
-## Lark 多维表格同步
+## Lark Bitable Sync
 
-测试集管理页面支持从飞书多维表格同步测试用例数据。
+The Test Set management page supports syncing test case data from Feishu/Lark Bitable.
 
-### 支持的字段映射
+### Supported Field Mappings
 
-| 字段 | 说明 | 必填 |
-|------|------|------|
-| 测试ID / test_id / ID | 测试用例唯一标识 | ✅ |
-| 输入 / input / 问题 / 提问 | 用户输入/问题内容 | ✅ |
-| 名称 / name / 用例名称 | 测试用例名称 | ❌ |
-| 描述 / description / 用例描述 | 测试用例描述 | ❌ |
-| 期望输出 / expected_output / 期望回答 | 期望的回复内容 | ❌ |
-| 关键点 / key_points / 测试要点 | 关键测试点（支持多行/逗号分隔） | ❌ |
-| 禁止点 / forbidden_points / 禁止内容 | 禁止出现的内容（支持多行/逗号分隔） | ❌ |
-| 分类 / category / 类别 | 测试用例分类 | ❌ |
+| Field | Description | Required |
+|-------|-------------|----------|
+| test_id / ID | Unique identifier for the test case | ✅ |
+| input / question / query | User input/question content | ✅ |
+| name / case_name | Test case name | ❌ |
+| description / case_description | Test case description | ❌ |
+| expected_output / expected_answer | Expected response content | ❌ |
+| key_points / test_points | Key test points (supports multi-line/comma-separated) | ❌ |
+| forbidden_points / forbidden_content | Content that should not appear (supports multi-line/comma-separated) | ❌ |
+| category / type / classification | Test case category | ❌ |
 
-### 同步模式
+### Sync Modes
 
-- **更新或创建（默认）**: 存在则更新，不存在则创建
-- **仅创建新记录**: 只导入新测试用例，跳过已存在的
-- **仅更新现有记录**: 只更新已有测试用例，不创建新记录
+- **Update or Create (default)**: Update if exists, create if not
+- **Create Only**: Only import new test cases, skip existing ones
+- **Update Only**: Only update existing test cases, do not create new records
 
 ## License
 
