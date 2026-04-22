@@ -39,27 +39,7 @@ Create `.env.local` file and configure environment variables:
 ```bash
 # Database path (optional, defaults to data/benchmark.db)
 DATABASE_PATH=data/benchmark.db
-
-# Lark/Feishu app credentials (for syncing Bitable)
-# Supports Feishu China (feishu) and Lark International (lark)
-LARK_APP_ID=cli_xxxxxxxxxxxxxxxx
-LARK_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-# LARK_APP_TYPE=feishu  # Optional: feishu (default) or lark
 ```
-
-#### Configuring Lark Bitable Sync
-
-1. **China Users (Feishu)**:
-   - Create an enterprise self-built app on [Feishu Open Platform](https://open.feishu.cn/)
-   - Use `LARK_APP_TYPE=feishu` (or leave unset, defaults to China version)
-
-2. **International Users (Lark)**:
-   - Create an app on [Lark Developer Portal](https://open.larkoffice.com/)
-   - Set `LARK_APP_TYPE=lark`
-
-3. Enable `bitable:record:read` permission (read Bitable records)
-4. Publish the app and obtain App ID and App Secret
-5. Share the Bitable with the app (add the app as a collaborator in the table)
 
 ### 3. Run Development Server
 
