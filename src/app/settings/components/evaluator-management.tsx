@@ -43,6 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { Plus, Edit, Trash2, Loader2, Settings } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -58,28 +59,77 @@ interface LocalEvaluator extends Evaluator {
   config: string;
 }
 
+/** Same keys as `context` in `scripts/run_evaluator.py`; `config.variables` can add or override keys */
+const EVALUATION_PROMPT_VARIABLES: ReadonlyArray<{
+  key: string;
+  detail: string;
+}> = [
+  { key: "agent_name", detail: "Agent name for this benchmark result row" },
+  { key: "test_id", detail: "Test case test_id" },
+  { key: "test_case_name", detail: "Test case display name" },
+  { key: "input", detail: "Test case input" },
+  {
+    key: "expected_output",
+    detail: "Expected output from the test case (may be empty)",
+  },
+  { key: "actual_output", detail: "Raw agent output for this result" },
+  {
+    key: "execution_answer",
+    detail:
+      "Parsed final answer; script may fall back to actual_output when empty",
+  },
+  {
+    key: "execution_steps",
+    detail: "Execution steps / intermediate trace as text",
+  },
+  {
+    key: "key_points",
+    detail: "JSON string of key-point list (from test case key_points)",
+  },
+  {
+    key: "forbidden_points",
+    detail:
+      "JSON string of forbidden-point list (from test case forbidden_points)",
+  },
+  { key: "how", detail: "Test case how / implementation hint" },
+  {
+    key: "execution_time_ms",
+    detail: "Execution duration in milliseconds (0 if missing)",
+  },
+  {
+    key: "trace",
+    detail:
+      "Synced Langfuse / execution trace body as text (empty string if none)",
+  },
+];
+
 const formSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
-  script_path: z.string().min(1, "Script path is required"),
   model_id: z.number().optional(),
-  prompt_template: z.string().min(1, "Prompt template is required"),
-  config: z.string().optional(),
+  evaluation_prompt: z
+    .string()
+    .min(
+      1,
+      "evaluation_prompt is required — sent to the evaluator script as config.evaluation_prompt",
+    ),
 });
 
 type FormData = z.infer<typeof formSchema>;
 
+/** 内置评估脚本路径，不在界面配置 */
+const DEFAULT_EVALUATOR_SCRIPT_PATH = "scripts/run_evaluator.py";
+
 const defaultConfig = {
-  model: "claude-sonnet-4-6",
   max_workers: 1,
   variables: {
     evaluation_criteria: "accuracy,completeness,clarity",
-    scoring_guide: "0-100 points, score based on meeting key test points and violating forbidden points",
+    scoring_guide:
+      "0-100 points, score based on meeting key test points and violating forbidden points",
   },
   evaluation_prompt: `Please evaluate the quality of the AI Agent's response.
 
 ## Test Case Information
-- Test ID: {{test_id}}
 - Test Name: {{test_case_name}}
 - Input: {{input}}
 - Expected Output: {{expected_output}}
@@ -115,28 +165,63 @@ Please return evaluation results in JSON format:
 }`,
 };
 
+/** 写入 DB 的 config 中除 evaluation_prompt 外的默认块（界面不展示 JSON） */
+function defaultEvaluatorConfigJson(): Record<string, unknown> {
+  return {
+    max_workers: defaultConfig.max_workers,
+    variables: { ...defaultConfig.variables },
+  };
+}
+
+/** 解析已有 config，去掉 evaluation_prompt，供与默认项合并 */
+function parseStoredEvaluatorConfigWithoutPrompt(
+  configStr: string | null | undefined,
+): Record<string, unknown> {
+  try {
+    const raw = JSON.parse(configStr || "{}") as Record<string, unknown>;
+    const rest = { ...raw };
+    delete rest.evaluation_prompt;
+    return rest;
+  } catch {
+    return {};
+  }
+}
+
+function mergeEvaluatorConfigForSave(
+  editing: LocalEvaluator | null,
+  evaluationPrompt: string,
+): Record<string, unknown> {
+  const base = defaultEvaluatorConfigJson();
+  const stored = parseStoredEvaluatorConfigWithoutPrompt(editing?.config);
+  const merged: Record<string, unknown> = { ...base, ...stored };
+  const baseVars = base.variables as Record<string, unknown>;
+  const storedVars =
+    stored.variables && typeof stored.variables === "object"
+      ? (stored.variables as Record<string, unknown>)
+      : {};
+  merged.variables = { ...baseVars, ...storedVars };
+  merged.evaluation_prompt = evaluationPrompt;
+  return merged;
+}
+
 export function EvaluatorManagement() {
   const [evaluators, setEvaluators] = useState<LocalEvaluator[]>([]);
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingEvaluator, setEditingEvaluator] = useState<LocalEvaluator | null>(
-    null,
-  );
+  const [editingEvaluator, setEditingEvaluator] =
+    useState<LocalEvaluator | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletingEvaluator, setDeletingEvaluator] = useState<LocalEvaluator | null>(
-    null,
-  );
+  const [deletingEvaluator, setDeletingEvaluator] =
+    useState<LocalEvaluator | null>(null);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
       description: "",
-      script_path: "scripts/run_evaluator.py",
       model_id: undefined,
-      prompt_template: defaultConfig.evaluation_prompt,
-      config: JSON.stringify({ ...defaultConfig, evaluation_prompt: undefined }, null, 2),
+      evaluation_prompt: defaultConfig.evaluation_prompt,
     },
   });
 
@@ -148,7 +233,7 @@ export function EvaluatorManagement() {
   const fetchEvaluators = async () => {
     try {
       const data = await api.evaluators.list();
-      setEvaluators(data.evaluators as LocalEvaluator[] || []);
+      setEvaluators((data.evaluators as LocalEvaluator[]) || []);
     } catch (error) {
       console.error("Error fetching evaluators:", error);
       toast.error("Failed to fetch evaluators");
@@ -168,24 +253,21 @@ export function EvaluatorManagement() {
 
   const onSubmit = async (values: FormData) => {
     try {
-      // Validate JSON format for config
-      let parsedConfig = {};
-      if (values.config) {
-        try {
-          parsedConfig = JSON.parse(values.config);
-        } catch {
-          toast.error("Configuration must be valid JSON format");
-          return;
-        }
-      }
+      const mergedConfig = mergeEvaluatorConfigForSave(
+        editingEvaluator,
+        values.evaluation_prompt,
+      );
+
+      const scriptPath =
+        editingEvaluator?.script_path ?? DEFAULT_EVALUATOR_SCRIPT_PATH;
 
       const payload = {
         name: values.name,
         description: values.description,
-        script_path: values.script_path,
+        script_path: scriptPath,
         model_id: values.model_id!,
-        prompt_template: values.prompt_template,
-        config: parsedConfig,
+        prompt_template: values.evaluation_prompt,
+        config: mergedConfig,
       };
 
       if (editingEvaluator) {
@@ -194,7 +276,9 @@ export function EvaluatorManagement() {
         await api.evaluators.create(payload);
       }
 
-      toast.success(editingEvaluator ? "Evaluator updated" : "Evaluator created");
+      toast.success(
+        editingEvaluator ? "Evaluator updated" : "Evaluator created",
+      );
       setDialogOpen(false);
       form.reset();
       setEditingEvaluator(null);
@@ -209,16 +293,17 @@ export function EvaluatorManagement() {
   const handleEdit = (evaluator: LocalEvaluator) => {
     setEditingEvaluator(evaluator);
 
-    // Parse config to extract prompt_template if available
-    let parsedConfig: Record<string, unknown> = {};
-    let promptTemplate = defaultConfig.evaluation_prompt;
+    let evaluationPrompt = defaultConfig.evaluation_prompt;
     try {
-      parsedConfig = JSON.parse(evaluator.config || '{}') as Record<string, unknown>;
-      if (parsedConfig.evaluation_prompt && typeof parsedConfig.evaluation_prompt === 'string') {
-        promptTemplate = parsedConfig.evaluation_prompt;
-        const rest = { ...parsedConfig };
-        delete rest.evaluation_prompt;
-        parsedConfig = rest;
+      const parsedConfig = JSON.parse(evaluator.config || "{}") as Record<
+        string,
+        unknown
+      >;
+      if (
+        parsedConfig.evaluation_prompt &&
+        typeof parsedConfig.evaluation_prompt === "string"
+      ) {
+        evaluationPrompt = parsedConfig.evaluation_prompt;
       }
     } catch {
       // Use defaults
@@ -227,10 +312,8 @@ export function EvaluatorManagement() {
     form.reset({
       name: evaluator.name,
       description: evaluator.description,
-      script_path: evaluator.script_path,
       model_id: evaluator.model_id ?? undefined,
-      prompt_template: promptTemplate,
-      config: JSON.stringify(parsedConfig, null, 2),
+      evaluation_prompt: evaluationPrompt,
     });
     setDialogOpen(true);
   };
@@ -256,10 +339,8 @@ export function EvaluatorManagement() {
     form.reset({
       name: "",
       description: "",
-      script_path: "scripts/run_evaluator.py",
       model_id: undefined,
-      prompt_template: defaultConfig.evaluation_prompt,
-      config: JSON.stringify({ ...defaultConfig, evaluation_prompt: undefined }, null, 2),
+      evaluation_prompt: defaultConfig.evaluation_prompt,
     });
     setDialogOpen(true);
   };
@@ -307,7 +388,6 @@ export function EvaluatorManagement() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Description</TableHead>
-                  <TableHead>Script Path</TableHead>
                   <TableHead>Created At</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -321,10 +401,9 @@ export function EvaluatorManagement() {
                     <TableCell className="max-w-xs truncate">
                       {evaluator.description || "-"}
                     </TableCell>
-                    <TableCell className="font-mono text-sm">
-                      {evaluator.script_path}
+                    <TableCell>
+                      {formatDateTimeLocal(evaluator.created_at)}
                     </TableCell>
-                    <TableCell>{formatDateTimeLocal(evaluator.created_at)}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button
@@ -361,7 +440,8 @@ export function EvaluatorManagement() {
               {editingEvaluator ? "Edit Evaluator" : "New Evaluator"}
             </DialogTitle>
             <DialogDescription>
-              Configure evaluator parameters with variable context for dynamic evaluation
+              Configure evaluator parameters with variable context for dynamic
+              evaluation
             </DialogDescription>
           </DialogHeader>
 
@@ -388,22 +468,8 @@ export function EvaluatorManagement() {
                   <FormItem>
                     <FormLabel>Description</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Evaluator description" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="script_path"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Script Path</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="e.g.: scripts/run_evaluator.py"
+                      <Textarea
+                        placeholder="Evaluator description"
                         {...field}
                       />
                     </FormControl>
@@ -455,43 +521,44 @@ export function EvaluatorManagement() {
 
               <FormField
                 control={form.control}
-                name="config"
+                name="evaluation_prompt"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Configuration (JSON)</FormLabel>
-                    <FormDescription className="mb-2">
-                      <div className="space-y-2">
-                        <p>This configuration is used to customize the evaluation process, including:</p>
-                        <ul className="list-disc pl-4 space-y-1 text-sm">
-                          <li>
-                            <strong>model</strong>: LLM model for evaluation (e.g.,
-                            claude-opus-4-6, claude-sonnet-4-6,
-                            claude-haiku-4-5-20251001)
-                          </li>
-                          <li>
-                            <strong>max_workers</strong>: Number of parallel evaluation processes
-                          </li>
-                          <li>
-                            <strong>variables</strong>: Custom variables that can be used in
-                            evaluation_prompt
-                          </li>
-                          <li>
-                            <strong>evaluation_prompt</strong>: Evaluation prompt sent to LLM,
-                            supports variable substitution
-                          </li>
-                        </ul>
-                        <p className="text-xs text-muted-foreground">
-                          Available variables: agent_name, test_id, test_case_name, input,
-                          expected_output, actual_output, execution_answer,
-                          execution_steps, key_points, forbidden_points, how,
-                          execution_time_ms, trace
-                        </p>
+                    <FormLabel>evaluation_prompt</FormLabel>
+                    <div className="space-y-2 pb-2">
+                      <p className="text-xs text-muted-foreground">
+                        Use placeholders like{" "}
+                        <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
+                          {"{{name}}"}
+                        </code>
+                        . Hover a badge for an English description. Custom keys
+                        may also come from saved{" "}
+                        <code className="rounded bg-muted px-0.5 font-mono text-[11px]">
+                          variables
+                        </code>{" "}
+                        in config (same name overrides built-ins).
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {EVALUATION_PROMPT_VARIABLES.map(({ key, detail }) => (
+                          <span
+                            key={key}
+                            title={detail}
+                            className="inline-block cursor-default"
+                          >
+                            <Badge
+                              variant="secondary"
+                              className="font-mono text-[11px] font-normal"
+                            >
+                              {`{{${key}}}`}
+                            </Badge>
+                          </span>
+                        ))}
                       </div>
-                    </FormDescription>
+                    </div>
                     <FormControl>
                       <Textarea
-                        placeholder="Evaluator configuration JSON"
-                        className="min-h-[400px] font-mono text-sm"
+                        placeholder="Evaluation prompt template..."
+                        className="min-h-[280px] font-mono text-sm"
                         {...field}
                       />
                     </FormControl>
@@ -515,7 +582,8 @@ export function EvaluatorManagement() {
           <DialogHeader>
             <DialogTitle>Confirm Delete</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete evaluator &quot;{deletingEvaluator?.name}&quot;? This action cannot be undone.
+              Are you sure you want to delete evaluator &quot;
+              {deletingEvaluator?.name}&quot;? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
