@@ -31,13 +31,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const configStr =
+      config === undefined || config === null
+        ? '{}'
+        : typeof config === 'string'
+          ? config
+          : JSON.stringify(config);
+
     const model = createModel({
       name,
       model_id,
       provider: provider || 'anthropic',
       api_key: api_key || null,
       base_url: base_url || null,
-      config: config || '{}',
+      config: configStr,
       is_default: is_default ? 1 : 0,
     });
 

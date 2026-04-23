@@ -1020,7 +1020,14 @@ export function updateModel(
   }
   if (model.config !== undefined) {
     sets.push("config = ?");
-    values.push(model.config);
+    const c = model.config;
+    values.push(
+      c === null
+        ? null
+        : typeof c === "string"
+          ? c
+          : JSON.stringify(c),
+    );
   }
   if (model.is_default !== undefined) {
     sets.push("is_default = ?");
