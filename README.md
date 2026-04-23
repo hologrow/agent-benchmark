@@ -12,6 +12,7 @@ A Real-World Agent Benchmark System
 3. **Agent Support** - Supports the openclaw/hermes agent, as well as other agents—provided they are ACP-compatible or support script execution..
 4. **Evaluator Management** - Configure evaluators with variable reference support for context
 5. **Benchmark Execution** - Launch test execution with support for variable injection and format requirements
+6. **AI Diagnostics** Automatically diagnoses link anomalies based on execution traces, optimizes the tool call pipeline, and improves response time and accuracy.
 
 # AgentBenchmark
 
