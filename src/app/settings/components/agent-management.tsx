@@ -101,6 +101,9 @@ export function AgentManagement() {
 
   const agentType = useWatch({ control: form.control, name: 'agentType' });
 
+  const showAllAgentTypes =
+    process.env.NEXT_PUBLIC_OPEN_AGENT_TYPE === '1';
+
   useEffect(() => {
     fetchAgents();
   }, []);
@@ -363,48 +366,85 @@ Configure Agent name, type and corresponding parameters
               <FormField
                 control={form.control}
                 name="agentType"
-                render={({ field }) => (
-                  <FormItem className="space-y-3">
-                    <FormLabel>Agent Type</FormLabel>
-                    <FormControl>
-                      <RadioGroup
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                        value={field.value}
-                        className="flex flex-col space-y-1"
-                      >
-                        <FormItem className="flex items-center space-x-3 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="openclaw" />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer">
-                            <span className="font-medium">OpenClaw</span>
-                            <span className="text-muted-foreground text-sm ml-2">Connect to OpenClaw service via URL and Token</span>
-                          </FormLabel>
-                        </FormItem>
-                        <FormItem className="flex items-center space-x-3 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="hermes" />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer">
-                            <span className="font-medium">Hermes</span>
-                            <span className="text-muted-foreground text-sm ml-2">Execute using Hermes CLI</span>
-                          </FormLabel>
-                        </FormItem>
-                        <FormItem className="flex items-center space-x-3 space-y-0">
-                          <FormControl>
-                            <RadioGroupItem value="other" />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer">
-                            <span className="font-medium">Other</span>
-                            <span className="text-muted-foreground text-sm ml-2">Custom command line execution</span>
-                          </FormLabel>
-                        </FormItem>
-                      </RadioGroup>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                render={({ field }) => {
+                  const restrictedTypeEdit =
+                    !showAllAgentTypes &&
+                    editingAgent &&
+                    (editingAgent.agent_type === 'openclaw' ||
+                      editingAgent.agent_type === 'hermes');
+
+                  if (restrictedTypeEdit) {
+                    return (
+                      <FormItem className="space-y-3">
+                        <FormLabel>Agent Type</FormLabel>
+                        <FormControl>
+                          <input type="hidden" {...field} />
+                        </FormControl>
+                        <p className="text-sm text-muted-foreground rounded-md border bg-muted/30 px-3 py-2">
+                          Current type:{' '}
+                          <span className="font-medium text-foreground">
+                            {getAgentTypeLabel(
+                              (editingAgent.agent_type || 'other') as AgentType,
+                            )}
+                          </span>
+                          . To show OpenClaw / Hermes in the UI, set{' '}
+                          <code className="rounded bg-muted px-1 text-xs">
+                            NEXT_PUBLIC_OPEN_AGENT_TYPE=1
+                          </code>{' '}
+                          at build time.
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }
+
+                  return (
+                    <FormItem className="space-y-3">
+                      <FormLabel>Agent Type</FormLabel>
+                      <FormControl>
+                        <RadioGroup
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                          value={field.value}
+                          className="flex flex-col space-y-1"
+                        >
+                          {showAllAgentTypes ? (
+                            <>
+                              <FormItem className="flex items-center space-x-3 space-y-0">
+                                <FormControl>
+                                  <RadioGroupItem value="openclaw" />
+                                </FormControl>
+                                <FormLabel className="font-normal cursor-pointer">
+                                  <span className="font-medium">OpenClaw</span>
+                                  <span className="text-muted-foreground text-sm ml-2">Connect to OpenClaw service via URL and Token</span>
+                                </FormLabel>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-3 space-y-0">
+                                <FormControl>
+                                  <RadioGroupItem value="hermes" />
+                                </FormControl>
+                                <FormLabel className="font-normal cursor-pointer">
+                                  <span className="font-medium">Hermes</span>
+                                  <span className="text-muted-foreground text-sm ml-2">Execute using Hermes CLI</span>
+                                </FormLabel>
+                              </FormItem>
+                            </>
+                          ) : null}
+                          <FormItem className="flex items-center space-x-3 space-y-0">
+                            <FormControl>
+                              <RadioGroupItem value="other" />
+                            </FormControl>
+                            <FormLabel className="font-normal cursor-pointer">
+                              <span className="font-medium">Other</span>
+                              <span className="text-muted-foreground text-sm ml-2">Custom command line execution</span>
+                            </FormLabel>
+                          </FormItem>
+                        </RadioGroup>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
               />
 
               {agentType === 'openclaw' && (

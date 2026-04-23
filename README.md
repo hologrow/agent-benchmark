@@ -56,8 +56,10 @@ Under this philosophy, **even when the final answer matches the reference, score
 ### 1. Install Dependencies
 
 ```bash
-cd benchmark-runner
-npm install
+git clone https://github.com/hologrow/agent-benchmark.git
+cd agent-benchmark
+pnpm i
+uv sync
 ```
 
 ### 2. Configure Environment
@@ -65,7 +67,6 @@ npm install
 Ensure the following are installed on your system:
 - Node.js 18+
 - Python 3.12+
-- ACPX CLI (for executing Agents)
 
 Create `.env.local` file and configure environment variables:
 
@@ -90,29 +91,6 @@ Visit http://localhost:3000
 4. **Create Benchmark** - Select Agents, test cases, and evaluator in the Benchmark execution page
 5. **Execute Benchmark** - Click the execute button to start testing
 6. **View Results** - View detailed results and scores on the Benchmark dashboard
-
-## Lark Bitable Sync
-
-The Test Set management page supports syncing test case data from Feishu/Lark Bitable.
-
-### Supported Field Mappings
-
-| Field | Description | Required |
-|-------|-------------|----------|
-| test_id / ID | Unique identifier for the test case | ✅ |
-| input / question / query | User input/question content | ✅ |
-| name / case_name | Test case name | ❌ |
-| description / case_description | Test case description | ❌ |
-| expected_output / expected_answer | Expected response content | ❌ |
-| key_points / test_points | Key test points (supports multi-line/comma-separated) | ❌ |
-| forbidden_points / forbidden_content | Content that should not appear (supports multi-line/comma-separated) | ❌ |
-| category / type / classification | Test case category | ❌ |
-
-### Sync Modes
-
-- **Update or Create (default)**: Update if exists, create if not
-- **Create Only**: Only import new test cases, skip existing ones
-- **Update Only**: Only update existing test cases, do not create new records
 
 ## License
 
