@@ -12,6 +12,7 @@ A Real-World Agent Benchmark System
 3. **Agent Support** - Supports the openclaw/hermes agent, as well as other agents—provided they are ACP-compatible or support script execution..
 4. **Evaluator Management** - Configure evaluators with variable reference support for context
 5. **Benchmark Execution** - Launch test execution with support for variable injection and format requirements
+6. **AI Diagnostics** Automatically diagnoses link anomalies based on execution traces, optimizes the tool call pipeline, and improves response time and accuracy.
 
 # AgentBenchmark
 
@@ -44,6 +45,31 @@ Surface-level agreement with the expected answer is insufficient if key points a
 For each benchmark item, we aim for **a single canonical path** from problem statement to correct solution—the one that reflects the intended reasoning, tool use, and constraints. If several unrelated approaches could all produce a similar-looking answer, the case should be tightened until **only one path** is fully defensible.
 
 Under this philosophy, **even when the final answer matches the reference, scores stay low if the agent took a different valid-looking route** or skipped steps that the golden path encodes. Correctness is judged on **process fidelity and constraint adherence**, not on output alone.
+
+
+## Screenshots
+
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img width="1090" alt="Snipaste_2026-04-22_13-20-53" src="https://github.com/user-attachments/assets/26c0feaa-c317-4cf9-a408-b3d9d732ef69" />
+    </td>
+    <td align="center" width="50%">
+      <img width="1090" alt="Snipaste_2026-04-22_13-28-08" src="https://github.com/user-attachments/assets/fdbe0027-29c1-4e16-8a76-53d18ba07dbb" />
+    </td>
+  </tr>
+  <tr>
+     <td align="center" width="50%">
+          <img width="1090" height="699" alt="Snipaste_2026-04-22_13-21-39" src="https://github.com/user-attachments/assets/44c138d6-3706-4406-8607-8ab175021829" />
+    </td>
+    <td align="center" width="50%">
+            <img width="1090" height="699" alt="Snipaste_2026-04-22_13-21-54" src="https://github.com/user-attachments/assets/7393d196-165d-4a71-86de-e1dfb17c172a" />
+    </td>
+  </tr>
+</table>
+
+
 
 ## Tech Stack
 
