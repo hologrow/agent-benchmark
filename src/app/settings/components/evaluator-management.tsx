@@ -133,7 +133,7 @@ const defaultConfig = {
 - Test Name: {{test_case_name}}
 - Input: {{input}}
 - Expected Output: {{expected_output}}
-- How: {{how}}
+- Expected How: {{how}}
 
 ## Key Test Points
 {{key_points}}
@@ -155,6 +155,7 @@ const defaultConfig = {
 2. Check if actual output or execution answer violates any forbidden points
 3. Score based on satisfaction level and violations (0-100)
 4. Generate detailed evaluation report
+5. The execution process must adhere to the procedures defined in "Expected How"; the higher the degree of alignment, the higher the score.
 
 Please return evaluation results in JSON format:
 {
