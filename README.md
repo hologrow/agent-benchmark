@@ -1,16 +1,23 @@
-# Benchmark Runner
+<div align="center">
+  <img src="./public/logo.png" width="100" />
+</div>
+
+A Real-World Agent Benchmark System
+
+
+## Features
+
+1. **Benchmark Dashboard** - View test case expected output, expected path, key test points, forbidden points
+2. **Test Set Management** - Manage Golden Dataset with support for syncing from Lark/Feishu Bitable (by plugin)
+3. **Agent Support** - Supports the openclaw/hermes agent, as well as other agents—provided they are ACP-compatible or support script execution..
+4. **Evaluator Management** - Configure evaluators with variable reference support for context
+5. **Benchmark Execution** - Launch test execution with support for variable injection and format requirements
+
+# AgentBenchmark
 
 ![workflow](./workflow.png)
 
 AI Agent Benchmark Platform for executing, evaluating, and managing AI Agent test cases.
-
-## Features
-
-1. **Benchmark Dashboard** - View test case input, expected output, actual output, key test points, forbidden points, and scores
-2. **Test Set Management** - Manage test cases with support for syncing from Lark/Feishu Bitable
-3. **Agent Management** - Configure Agent names and ACPX parameters
-4. **Evaluator Management** - Configure evaluators with variable reference support for context
-5. **Benchmark Execution** - Launch test execution with support for variable injection and format requirements
 
 ## Golden Dataset
 
