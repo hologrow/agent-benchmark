@@ -99,6 +99,7 @@ export class LangfusePlugin extends BasePlugin {
       timestamp?: string;
     }>
   > {
+    console.log("search trace by magic code");
     const client = this.getClient();
     const { magicCode, fromTime, toTime } = query;
 
@@ -109,31 +110,44 @@ export class LangfusePlugin extends BasePlugin {
     const fromTimeStr = fromTime?.toISOString();
     const toTimeStr = toTime?.toISOString();
 
-    // Get traces list
-    const traces = await client.api.trace.list({
-      fromTimestamp: fromTimeStr,
-      toTimestamp: toTimeStr,
-      limit: 100,
-    });
-
     const results: Array<{
       traceId: string;
       traceContent: string;
       timestamp?: string;
     }> = [];
 
-    // Iterate traces to find those containing magic_code
-    for (const trace of traces.data) {
-      const inputStr = JSON.stringify(trace.input || "");
-      const outputStr = JSON.stringify(trace.output || "");
+    // 分页拉取：单页 limit=100 时繁忙项目容易漏掉刚写入的 trace（与 benchmark 侧多次 sync 同理）
+    const maxPages = 20;
+    for (let page = 1; page <= maxPages; page++) {
+      const traces = await client.api.trace.list({
+        fromTimestamp: fromTimeStr,
+        toTimestamp: toTimeStr,
+        limit: 100,
+        page,
+        orderBy: "timestamp.desc",
+      });
 
-      if (inputStr.includes(magicCode) || outputStr.includes(magicCode)) {
-        const traceContent = await this.fetchTraceContent(trace.id);
-        results.push({
-          traceId: trace.id,
-          traceContent,
-          timestamp: trace.timestamp,
-        });
+      const rows = traces.data ?? [];
+      if (rows.length === 0) {
+        break;
+      }
+
+      for (const trace of rows) {
+        const inputStr = JSON.stringify(trace.input || "");
+        const outputStr = JSON.stringify(trace.output || "");
+
+        if (inputStr.includes(magicCode) || outputStr.includes(magicCode)) {
+          const traceContent = await this.fetchTraceContent(trace.id);
+          results.push({
+            traceId: trace.id,
+            traceContent,
+            timestamp: trace.timestamp,
+          });
+        }
+      }
+
+      if (results.length > 0) {
+        break;
       }
     }
 

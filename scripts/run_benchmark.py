@@ -26,7 +26,10 @@ def generate_magic_code() -> str:
     """Unique magic code for Langfuse trace correlation."""
     return f"BM-{uuid.uuid4().hex[:12].upper()}"
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'benchmark.db')
+DB_PATH = os.environ.get(
+    "DATABASE_PATH",
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "benchmark.db"),
+)
 RESULTS_DIR = Path(os.path.dirname(os.path.dirname(__file__))) / 'results'
 
 

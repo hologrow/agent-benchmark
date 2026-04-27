@@ -9,6 +9,7 @@ import {
   PlayCircle,
   FolderOpen,
   GraduationCap,
+  FlaskConical,
 } from "lucide-react";
 
 const showRLTraining = process.env.NEXT_PUBLIC_RL_TRAINING === "1";
@@ -17,6 +18,7 @@ const navItems = [
   { href: "/", label: "Benchmark Scores", icon: BarChart3 },
   { href: "/test-sets", label: "Test Sets", icon: FolderOpen },
   { href: "/benchmarks", label: "Benchmarks", icon: PlayCircle },
+  { href: "/simulation-run", label: "SimulationRun", icon: FlaskConical },
   showRLTraining
     ? { href: "/rl-training", label: "RL Training", icon: GraduationCap }
     : null,
