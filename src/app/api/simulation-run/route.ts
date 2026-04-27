@@ -96,7 +96,11 @@ async function pullTraceAndSummary(
   traceSummary: string | null;
 }> {
   const magicCode = typeof run.magic_code === "string" ? run.magic_code : null;
-  let trace: { traceId: string; traceContent: string } | null = null;
+  let trace: {
+    traceId: string;
+    traceContent: string;
+    traceUrl: string;
+  } | null = null;
   if (magicCode) {
     const traceSpanStart = parseOptionalIso(run.run_started_at);
     trace = await fetchTraceByMagicCodeWithBackoff({
