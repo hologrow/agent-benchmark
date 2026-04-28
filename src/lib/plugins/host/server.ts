@@ -16,7 +16,10 @@ function createServerBridge(): HostBridge {
       }));
     },
     async createTestCase(row) {
-      const tc = createTestCase(row);
+      const tc = createTestCase({
+        ...row,
+        created_by: row.created_by?.trim() || "",
+      });
       return { id: tc.id };
     },
     async updateTestCase(id, row) {

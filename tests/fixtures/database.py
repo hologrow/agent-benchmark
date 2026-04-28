@@ -39,6 +39,7 @@ def create_test_db() -> sqlite3.Connection:
             key_points TEXT DEFAULT '[]',
             forbidden_points TEXT DEFAULT '[]',
             how TEXT,
+            created_by TEXT NOT NULL DEFAULT '',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )

@@ -134,6 +134,8 @@ export interface LegacySyncParsedTestCasePayload {
   forbidden_points: string;
   category: string;
   how: string;
+  /** 外部同步可选；缺省存空字符串 */
+  created_by?: string;
 }
 
 /** Bitable 拉取并解析后的结果（不落库）。 */
@@ -229,6 +231,8 @@ export interface CapabilityInterfaces {
       executionId?: number;
       fromTime?: Date;
       toTime?: Date;
+      /** 与集成里按 Agent 配置的 Langfuse 密钥对应；不传则用默认项目密钥 */
+      agentId?: number;
       /**
        * `full`（默认）：根 trace 的 output + TOOL 类 observations，与 benchmark 落库一致。
        * `tools-only`：仅序列化 TOOL observations（模拟跑等场景）。
@@ -242,13 +246,16 @@ export interface CapabilityInterfaces {
       }>
     >;
     /** Get trace details */
-    getTrace(traceId: string): Promise<{
+    getTrace(
+      traceId: string,
+      agentId?: number,
+    ): Promise<{
       traceId: string;
       traceContent: string;
       url?: string;
     } | null>;
     /** Generate trace URL */
-    getTraceUrl(traceId: string): string;
+    getTraceUrl(traceId: string, agentId?: number): string;
   };
 
   [Capability.EXPORT_RESULTS]: {

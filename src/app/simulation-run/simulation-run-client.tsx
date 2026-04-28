@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Card,
@@ -17,6 +17,7 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -31,6 +32,13 @@ import type { Agent as ApiAgent } from "@/types/api";
 import { Markdown } from "@/components/ui/markdown";
 import { cn } from "@/lib/utils";
 
+const SIMULATION_TEST_CASE_CREATOR_STORAGE_KEY =
+  "benchmark-runner:simulation-test-case-creator";
+
+/** 同标签页内切换路由后恢复；关闭标签页即失效 */
+const SIMULATION_PAGE_SESSION_KEY =
+  "benchmark-runner:simulation-run-session:v1";
+
 interface SimulationRunResponse {
   run: Record<string, unknown>;
   trace: {
@@ -41,15 +49,121 @@ interface SimulationRunResponse {
   traceSummary: string | null;
 }
 
+type RunPhase = "idle" | "running" | "done";
+
+type PersistedSimulationSnapshot = {
+  v: 2;
+  /** 任务阶段：用于恢复「执行中」与结果区状态 */
+  runPhase: RunPhase;
+  /** `runPhase === "running"` 时记录开始时间（ms），用于超时后不再假定为执行中 */
+  runStartedAt: number | null;
+  agentId: string;
+  question: string;
+  result: SimulationRunResponse | null;
+  caseImportMode: boolean;
+  draftInput: string;
+  draftDescription: string;
+  draftAnswer: string;
+  draftTraceSummary: string;
+  draftKeyPoints: string;
+  draftForbiddenPoints: string;
+  draftCreatedBy: string;
+};
+
+type LegacyPersistedV1 = Omit<
+  PersistedSimulationSnapshot,
+  "v" | "runPhase" | "runStartedAt"
+> & {
+  v: 1;
+};
+
+function stripTraceContentForStorage(
+  data: SimulationRunResponse | null,
+): SimulationRunResponse | null {
+  if (!data?.trace) return data;
+  return {
+    ...data,
+    trace: { ...data.trace, traceContent: "" },
+  };
+}
+
+function migrateSnapshot(raw: unknown): PersistedSimulationSnapshot | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (o.v === 2) {
+    const s = o as unknown as PersistedSimulationSnapshot;
+    if (
+      s.runPhase !== "running" &&
+      s.runPhase !== "done" &&
+      s.runPhase !== "idle"
+    )
+      return null;
+    return s;
+  }
+  if (o.v === 1) {
+    const old = o as unknown as LegacyPersistedV1;
+    const hasResult = Boolean(old.result?.run);
+    return {
+      v: 2,
+      runPhase: hasResult ? "done" : "idle",
+      runStartedAt: null,
+      agentId: String(old.agentId ?? ""),
+      question: String(old.question ?? ""),
+      result: old.result ?? null,
+      caseImportMode: Boolean(old.caseImportMode),
+      draftInput: String(old.draftInput ?? ""),
+      draftDescription: String(old.draftDescription ?? ""),
+      draftAnswer: String(old.draftAnswer ?? ""),
+      draftTraceSummary: String(old.draftTraceSummary ?? ""),
+      draftKeyPoints: String(old.draftKeyPoints ?? ""),
+      draftForbiddenPoints: String(old.draftForbiddenPoints ?? ""),
+      draftCreatedBy: String(old.draftCreatedBy ?? ""),
+    };
+  }
+  return null;
+}
+
+function readSessionSnapshot(): PersistedSimulationSnapshot | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(SIMULATION_PAGE_SESSION_KEY);
+    if (!raw) return null;
+    return migrateSnapshot(JSON.parse(raw) as unknown);
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionSnapshot(s: PersistedSimulationSnapshot) {
+  if (typeof window === "undefined") return;
+  try {
+    const payload: PersistedSimulationSnapshot = {
+      ...s,
+      result: stripTraceContentForStorage(s.result),
+    };
+    window.sessionStorage.setItem(
+      SIMULATION_PAGE_SESSION_KEY,
+      JSON.stringify(payload),
+    );
+  } catch (e) {
+    console.warn("[simulation-run] sessionStorage save failed:", e);
+  }
+}
+
+const SIMULATION_PENDING_MAX_MS = 340_000;
+
 export default function SimulationRunPageClient() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  const sessionHydratedRef = useRef(false);
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestSnapshotRef = useRef<PersistedSimulationSnapshot | null>(null);
+  const runStartedAtRef = useRef<number | null>(null);
+
   const [agents, setAgents] = useState<ApiAgent[]>([]);
-  const [agentId, setAgentId] = useState(
-    () => searchParams.get("agentId")?.trim() ?? "",
-  );
+  const [agentId, setAgentId] = useState("");
   const [question, setQuestion] = useState("");
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [running, setRunning] = useState(false);
@@ -65,7 +179,151 @@ export default function SimulationRunPageClient() {
   const [draftTraceSummary, setDraftTraceSummary] = useState("");
   const [draftKeyPoints, setDraftKeyPoints] = useState("");
   const [draftForbiddenPoints, setDraftForbiddenPoints] = useState("");
+  const [draftCreatedBy, setDraftCreatedBy] = useState("");
   const [savingCase, setSavingCase] = useState(false);
+
+  /** 从 sessionStorage 恢复整页状态（优先 URL 上的 agentId） */
+  useLayoutEffect(() => {
+    if (sessionHydratedRef.current) return;
+    sessionHydratedRef.current = true;
+
+    const urlAgent = searchParams.get("agentId")?.trim() ?? "";
+    const snap = readSessionSnapshot();
+
+    if (snap) {
+      setQuestion(typeof snap.question === "string" ? snap.question : "");
+      let phase: RunPhase = snap.runPhase;
+      if (snap.result?.run && phase === "running") {
+        phase = "done";
+      }
+      let restoreRunning = phase === "running";
+      if (restoreRunning) {
+        const t0 = snap.runStartedAt;
+        if (typeof t0 !== "number" || Number.isNaN(t0)) {
+          restoreRunning = false;
+        } else if (Date.now() - t0 > SIMULATION_PENDING_MAX_MS) {
+          restoreRunning = false;
+        }
+      }
+      if (snap.runPhase === "running" && !snap.result && !restoreRunning) {
+        toast.info("上次模拟跑可能未完成或已超时，请重新执行");
+      }
+      setRunning(restoreRunning);
+      if (restoreRunning) {
+        runStartedAtRef.current = snap.runStartedAt ?? Date.now();
+      } else {
+        runStartedAtRef.current = null;
+      }
+      setResult(snap.result ?? null);
+      setCaseImportMode(Boolean(snap.caseImportMode));
+      setDraftInput(snap.draftInput ?? "");
+      setDraftDescription(snap.draftDescription ?? "");
+      setDraftAnswer(snap.draftAnswer ?? "");
+      setDraftTraceSummary(snap.draftTraceSummary ?? "");
+      setDraftKeyPoints(snap.draftKeyPoints ?? "");
+      setDraftForbiddenPoints(snap.draftForbiddenPoints ?? "");
+      let creator = snap.draftCreatedBy ?? "";
+      if (!creator.trim()) {
+        try {
+          creator =
+            window.localStorage.getItem(
+              SIMULATION_TEST_CASE_CREATOR_STORAGE_KEY,
+            ) ?? "";
+        } catch {
+          /* ignore */
+        }
+      }
+      setDraftCreatedBy(creator);
+      setAgentId(urlAgent || snap.agentId || "");
+    } else {
+      if (urlAgent) setAgentId(urlAgent);
+      try {
+        const saved = window.localStorage.getItem(
+          SIMULATION_TEST_CASE_CREATOR_STORAGE_KEY,
+        );
+        if (saved) setDraftCreatedBy(saved);
+      } catch {
+        /* ignore */
+      }
+    }
+    // 仅首次挂载时从 session 恢复，避免与后续 URL 更新循环冲突
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional once per mount
+  }, [searchParams]);
+
+  /** 同步内存快照 + debounce 落盘；卸载时立刻 flush，避免任务结果未写入 */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const runPhase: RunPhase = running ? "running" : result ? "done" : "idle";
+    const snap: PersistedSimulationSnapshot = {
+      v: 2,
+      runPhase,
+      runStartedAt: running ? runStartedAtRef.current : null,
+      agentId,
+      question,
+      result,
+      caseImportMode,
+      draftInput,
+      draftDescription,
+      draftAnswer,
+      draftTraceSummary,
+      draftKeyPoints,
+      draftForbiddenPoints,
+      draftCreatedBy,
+    };
+    latestSnapshotRef.current = snap;
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      writeSessionSnapshot(snap);
+    }, 400);
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    };
+  }, [
+    running,
+    result,
+    agentId,
+    question,
+    caseImportMode,
+    draftInput,
+    draftDescription,
+    draftAnswer,
+    draftTraceSummary,
+    draftKeyPoints,
+    draftForbiddenPoints,
+    draftCreatedBy,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      const s = latestSnapshotRef.current;
+      if (s) writeSessionSnapshot(s);
+    };
+  }, []);
+
+  function clearPageSession() {
+    try {
+      window.sessionStorage.removeItem(SIMULATION_PAGE_SESSION_KEY);
+    } catch {
+      /* ignore */
+    }
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
+    latestSnapshotRef.current = null;
+    setResult(null);
+    setQuestion("");
+    setRunning(false);
+    runStartedAtRef.current = null;
+    setCaseImportMode(false);
+    setDraftInput("");
+    setDraftDescription("");
+    setDraftAnswer("");
+    setDraftTraceSummary("");
+    setDraftKeyPoints("");
+    setDraftForbiddenPoints("");
+    toast.success("已清除本页会话缓存");
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -147,8 +405,41 @@ export default function SimulationRunPageClient() {
       toast.error("请输入问题");
       return;
     }
+    const t0 = Date.now();
+    runStartedAtRef.current = t0;
     setRunning(true);
     setResult(null);
+
+    const baseForRun = latestSnapshotRef.current ??
+      readSessionSnapshot() ?? {
+        v: 2 as const,
+        runPhase: "idle" as const,
+        runStartedAt: null,
+        agentId,
+        question,
+        result: null,
+        caseImportMode,
+        draftInput,
+        draftDescription,
+        draftAnswer,
+        draftTraceSummary,
+        draftKeyPoints,
+        draftForbiddenPoints,
+        draftCreatedBy,
+      };
+    const snapRunning: PersistedSimulationSnapshot = {
+      ...baseForRun,
+      v: 2,
+      runPhase: "running",
+      runStartedAt: t0,
+      agentId,
+      question,
+      result: null,
+      caseImportMode,
+    };
+    latestSnapshotRef.current = snapRunning;
+    writeSessionSnapshot(snapRunning);
+
     try {
       const res = await fetch("/api/simulation-run", {
         method: "POST",
@@ -158,17 +449,66 @@ export default function SimulationRunPageClient() {
           question,
         }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as SimulationRunResponse & {
+        error?: string;
+      };
       if (!res.ok) {
         toast.error(typeof data.error === "string" ? data.error : "执行失败");
+        const partial =
+          data && typeof data === "object" && "run" in data
+            ? (data as SimulationRunResponse)
+            : null;
+        const cur = latestSnapshotRef.current ?? snapRunning;
+        const snapErr: PersistedSimulationSnapshot = {
+          ...cur,
+          v: 2,
+          runPhase: partial ? "done" : "idle",
+          runStartedAt: null,
+          result: partial,
+        };
+        latestSnapshotRef.current = snapErr;
+        writeSessionSnapshot(snapErr);
+        if (snapErr.result) setResult(snapErr.result);
         return;
       }
+      const curDone = latestSnapshotRef.current ?? snapRunning;
+      const snapDone: PersistedSimulationSnapshot = {
+        ...curDone,
+        v: 2,
+        runPhase: "done",
+        runStartedAt: null,
+        result: data as SimulationRunResponse,
+      };
+      latestSnapshotRef.current = snapDone;
+      writeSessionSnapshot(snapDone);
       setResult(data as SimulationRunResponse);
       toast.success("执行完成");
     } catch {
       toast.error("请求失败");
+      const curFail = latestSnapshotRef.current ?? snapRunning;
+      const snapFail: PersistedSimulationSnapshot = {
+        ...curFail,
+        v: 2,
+        runPhase: "idle",
+        runStartedAt: null,
+        result: null,
+      };
+      latestSnapshotRef.current = snapFail;
+      writeSessionSnapshot(snapFail);
     } finally {
+      runStartedAtRef.current = null;
       setRunning(false);
+      const prev = latestSnapshotRef.current;
+      if (prev) {
+        const r = prev.result;
+        const next: PersistedSimulationSnapshot = {
+          ...prev,
+          runPhase: r ? "done" : "idle",
+          runStartedAt: null,
+        };
+        latestSnapshotRef.current = next;
+        writeSessionSnapshot(next);
+      }
     }
   }
 
@@ -187,6 +527,14 @@ export default function SimulationRunPageClient() {
     setDraftTraceSummary(result.traceSummary ?? "");
     setDraftKeyPoints("");
     setDraftForbiddenPoints("");
+    try {
+      const saved = window.localStorage.getItem(
+        SIMULATION_TEST_CASE_CREATOR_STORAGE_KEY,
+      );
+      if (saved) setDraftCreatedBy(saved);
+    } catch {
+      /* ignore */
+    }
     setCaseImportMode(true);
   }
 
@@ -197,6 +545,11 @@ export default function SimulationRunPageClient() {
   async function saveTestCaseFromSimulation() {
     if (!draftInput.trim()) {
       toast.error("请填写「输入」");
+      return;
+    }
+    const creator = draftCreatedBy.trim();
+    if (!creator) {
+      toast.error("请填写「创建人」");
       return;
     }
     setSavingCase(true);
@@ -217,6 +570,15 @@ export default function SimulationRunPageClient() {
         descTrim.slice(0, 100) ||
         `模拟跑 ${new Date().toLocaleString("zh-CN")}`;
 
+      try {
+        window.localStorage.setItem(
+          SIMULATION_TEST_CASE_CREATOR_STORAGE_KEY,
+          creator,
+        );
+      } catch {
+        /* ignore */
+      }
+
       const res = await fetch("/api/test-cases", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -230,6 +592,7 @@ export default function SimulationRunPageClient() {
           forbidden_points: JSON.stringify(forbiddenPoints),
           category: "simulation-run",
           how: draftTraceSummary.trim(),
+          created_by: creator,
         }),
       });
       const data = await res.json();
@@ -260,15 +623,29 @@ export default function SimulationRunPageClient() {
 
   return (
     <div className="container mx-auto max-w-4xl space-y-6 px-4 py-8">
-      <div className="flex items-center gap-3">
-        <FlaskConical className="h-8 w-8 text-muted-foreground" />
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">模拟跑</h1>
-          <p className="text-muted-foreground text-sm">
-            选择 Agent、输入问题，按与 Benchmark
-            相同的方式拉起子进程执行，并尝试拉取 Langfuse 追踪与简短摘要。
-          </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-center gap-3">
+          <FlaskConical className="h-8 w-8 shrink-0 text-muted-foreground" />
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">模拟跑</h1>
+            <p className="text-muted-foreground text-sm">
+              选择 Agent、输入问题，按与 Benchmark
+              相同的方式拉起子进程执行，并尝试拉取 Langfuse 追踪与简短摘要。
+            </p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              本页状态会保存在当前浏览器标签会话中，切换到其他页面再返回不会丢失；关闭标签页后清除。
+            </p>
+          </div>
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0 self-start text-muted-foreground"
+          onClick={clearPageSession}
+        >
+          清除本页会话
+        </Button>
       </div>
 
       <Card>
@@ -455,6 +832,22 @@ export default function SimulationRunPageClient() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="draft-created-by">
+                  创建人 <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="draft-created-by"
+                  value={draftCreatedBy}
+                  onChange={(e) => setDraftCreatedBy(e.target.value)}
+                  placeholder="创建人"
+                  className="max-w-md"
+                  autoComplete="name"
+                />
+                <p className="text-xs text-muted-foreground">
+                  同一浏览器只需填写一次，下次打开会自动带出。
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="draft-input">输入</Label>
                 <Textarea
                   id="draft-input"
@@ -524,7 +917,9 @@ export default function SimulationRunPageClient() {
                 <Button
                   type="button"
                   onClick={saveTestCaseFromSimulation}
-                  disabled={savingCase || !draftInput.trim()}
+                  disabled={
+                    savingCase || !draftInput.trim() || !draftCreatedBy.trim()
+                  }
                 >
                   {savingCase ? (
                     <>

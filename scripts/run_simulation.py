@@ -94,7 +94,10 @@ def main() -> None:
             if not agent_command:
                 raise ValueError("Command is required for this agent type")
             command_str = agent_command.replace("{{prompt}}", full_prompt)
-            command_str = command_str.replace("{{execution_id}}", "simulation")
+            timems = int(time.time() * 1000)
+            command_str = command_str.replace(
+                "{{execution_id}}", f"simulation-{timems}"
+            )
             log(f"[run] {command_str}")
 
         # 二进制分块读取，避免子进程 stdout 全缓冲且无换行时 readline 死锁（管道写满后双方阻塞）

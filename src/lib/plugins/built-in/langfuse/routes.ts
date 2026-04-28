@@ -18,6 +18,15 @@ function parseIsoDate(v: unknown): Date | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
+function parseAgentId(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim()) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
 export default async function langfusePluginHttp(
   ctx: PluginHttpContext,
 ): Promise<NextResponse | null> {
@@ -66,11 +75,13 @@ export default async function langfusePluginHttp(
             : undefined;
         const fromTime = parseIsoDate(payload.fromTime);
         const toTime = parseIsoDate(payload.toTime);
+        const agentId = parseAgentId(payload.agentId);
         const traces = await plugin.searchTraces({
           magicCode,
           executionId,
           fromTime,
           toTime,
+          agentId,
         });
         return NextResponse.json({ traces });
       }
@@ -83,7 +94,8 @@ export default async function langfusePluginHttp(
             { status: 400 },
           );
         }
-        const trace = await plugin.getTrace(traceId);
+        const agentId = parseAgentId(payload.agentId);
+        const trace = await plugin.getTrace(traceId, agentId);
         return NextResponse.json({ trace });
       }
       case LANGFUSE_ROUTE_TRACE_URL: {
@@ -95,7 +107,8 @@ export default async function langfusePluginHttp(
             { status: 400 },
           );
         }
-        const url = plugin.getTraceUrl(traceId);
+        const agentId = parseAgentId(payload.agentId);
+        const url = plugin.getTraceUrl(traceId, agentId);
         return NextResponse.json({ url });
       }
       default:

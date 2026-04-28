@@ -14,8 +14,15 @@ interface LangfuseConfig {
   secretKey: string;
 }
 
+type LangfuseAgentCredentialEntry = {
+  publicKey?: string;
+  secretKey?: string;
+  baseUrl?: string;
+};
+
 export class LangfusePlugin extends BasePlugin {
-  private client: LangfuseClient | null = null;
+  /** Key: baseUrl + publicKey + secretKey fingerprint */
+  private readonly langfuseClientCache = new Map<string, LangfuseClient>();
 
   // Methods implementing TRACE_EXECUTION capability
   searchTraces!: CapabilityInterfaces[Capability.TRACE_EXECUTION]["searchTraces"];
@@ -40,7 +47,7 @@ export class LangfusePlugin extends BasePlugin {
     this.getTraceUrl = this._getTraceUrl.bind(this);
   }
 
-  private getLangfuseConfig(): LangfuseConfig {
+  private getDefaultLangfuseConfig(): LangfuseConfig {
     return {
       baseUrl: (this.config.baseUrl as string) || "https://cloud.langfuse.com",
       publicKey: (this.config.publicKey as string) || "",
@@ -48,25 +55,113 @@ export class LangfusePlugin extends BasePlugin {
     };
   }
 
-  private getClient(): LangfuseClient {
-    if (!this.client) {
-      const config = this.getLangfuseConfig();
-      this.client = new LangfuseClient({
+  private parseAgentCredentialsMap():
+    | Record<string, LangfuseAgentCredentialEntry>
+    | undefined {
+    const rowsRaw = this.config.agentCredentialRows;
+    if (Array.isArray(rowsRaw) && rowsRaw.length > 0) {
+      const map: Record<string, LangfuseAgentCredentialEntry> = {};
+      for (const r of rowsRaw) {
+        if (!r || typeof r !== "object") continue;
+        const row = r as Record<string, unknown>;
+        const idRaw = row.agentId;
+        const key =
+          typeof idRaw === "number" && Number.isFinite(idRaw)
+            ? String(Math.trunc(idRaw))
+            : typeof idRaw === "string" && idRaw.trim()
+              ? idRaw.trim()
+              : "";
+        if (!key) continue;
+        map[key] = {
+          publicKey:
+            typeof row.publicKey === "string" ? row.publicKey : undefined,
+          secretKey:
+            typeof row.secretKey === "string" ? row.secretKey : undefined,
+          baseUrl:
+            typeof row.baseUrl === "string" ? row.baseUrl : undefined,
+        };
+      }
+      if (Object.keys(map).length > 0) {
+        return map;
+      }
+    }
+
+    /** Legacy: object or JSON string in `agentCredentials` */
+    const raw = this.config.agentCredentials;
+    if (raw == null || raw === "") return undefined;
+    if (typeof raw === "string") {
+      const t = raw.trim();
+      if (!t) return undefined;
+      try {
+        const o = JSON.parse(t) as unknown;
+        if (o && typeof o === "object" && !Array.isArray(o)) {
+          return o as Record<string, LangfuseAgentCredentialEntry>;
+        }
+      } catch {
+        return undefined;
+      }
+      return undefined;
+    }
+    if (typeof raw === "object" && !Array.isArray(raw)) {
+      return raw as Record<string, LangfuseAgentCredentialEntry>;
+    }
+    return undefined;
+  }
+
+  /**
+   * Default project keys when agentId omitted; otherwise merge integration
+   * `agentCredentials[agentId]` over defaults (per-field fallback).
+   */
+  private resolveLangfuseConfig(agentId?: number): LangfuseConfig {
+    const defaults = this.getDefaultLangfuseConfig();
+    if (agentId == null || !Number.isFinite(agentId)) {
+      return defaults;
+    }
+    const map = this.parseAgentCredentialsMap();
+    if (!map) return defaults;
+    const entry = map[String(agentId)];
+    if (!entry || typeof entry !== "object") return defaults;
+    return {
+      baseUrl:
+        typeof entry.baseUrl === "string" && entry.baseUrl.trim()
+          ? entry.baseUrl.trim().replace(/\/$/, "")
+          : defaults.baseUrl,
+      publicKey:
+        typeof entry.publicKey === "string" && entry.publicKey
+          ? entry.publicKey
+          : defaults.publicKey,
+      secretKey:
+        typeof entry.secretKey === "string" && entry.secretKey
+          ? entry.secretKey
+          : defaults.secretKey,
+    };
+  }
+
+  private getClientForResolvedConfig(config: LangfuseConfig): LangfuseClient {
+    const key = `${config.baseUrl}\n${config.publicKey}\n${config.secretKey}`;
+    let c = this.langfuseClientCache.get(key);
+    if (!c) {
+      c = new LangfuseClient({
         publicKey: config.publicKey,
         secretKey: config.secretKey,
         baseUrl: config.baseUrl,
       });
+      if (this.langfuseClientCache.size > 48) {
+        this.langfuseClientCache.clear();
+      }
+      this.langfuseClientCache.set(key, c);
     }
-    return this.client;
+    return c;
+  }
+
+  private getClient(): LangfuseClient {
+    return this.getClientForResolvedConfig(
+      this.resolveLangfuseConfig(undefined),
+    );
   }
 
   async initialize(): Promise<void> {
-    const config = this.getLangfuseConfig();
-    this.client = new LangfuseClient({
-      publicKey: config.publicKey,
-      secretKey: config.secretKey,
-      baseUrl: config.baseUrl,
-    });
+    this.getClientForResolvedConfig(this.resolveLangfuseConfig(undefined));
   }
 
   async testConnection(): Promise<{ success: boolean; message?: string }> {
@@ -92,6 +187,7 @@ export class LangfusePlugin extends BasePlugin {
     executionId?: number;
     fromTime?: Date;
     toTime?: Date;
+    agentId?: number;
     traceContentFormat?: "full" | "tools-only";
   }): Promise<
     Array<{
@@ -101,7 +197,8 @@ export class LangfusePlugin extends BasePlugin {
     }>
   > {
     console.log("search trace by magic code");
-    const client = this.getClient();
+    const lfConfig = this.resolveLangfuseConfig(query.agentId);
+    const client = this.getClientForResolvedConfig(lfConfig);
     const { magicCode, fromTime, toTime } = query;
     const traceContentFormat = query.traceContentFormat ?? "full";
 
@@ -142,6 +239,7 @@ export class LangfusePlugin extends BasePlugin {
           const traceContent = await this.fetchTraceContent(
             trace.id,
             traceContentFormat,
+            client,
           );
           results.push({
             traceId: trace.id,
@@ -161,13 +259,16 @@ export class LangfusePlugin extends BasePlugin {
 
   private async _getTrace(
     traceId: string,
+    agentId?: number,
   ): Promise<{ traceId: string; traceContent: string; url?: string } | null> {
     try {
-      const traceContent = await this.fetchTraceContent(traceId, "full");
+      const lfConfig = this.resolveLangfuseConfig(agentId);
+      const client = this.getClientForResolvedConfig(lfConfig);
+      const traceContent = await this.fetchTraceContent(traceId, "full", client);
       return {
         traceId,
         traceContent,
-        url: this.getTraceUrl(traceId),
+        url: this.getTraceUrl(traceId, agentId),
       };
     } catch (error) {
       console.error(`[LangfusePlugin] Failed to get trace ${traceId}:`, error);
@@ -175,16 +276,17 @@ export class LangfusePlugin extends BasePlugin {
     }
   }
 
-  private _getTraceUrl(traceId: string): string {
-    const config = this.getLangfuseConfig();
-    return `${config.baseUrl}/trace/${traceId}`;
+  private _getTraceUrl(traceId: string, agentId?: number): string {
+    const config = this.resolveLangfuseConfig(agentId);
+    const base = config.baseUrl.replace(/\/$/, "");
+    return `${base}/trace/${traceId}`;
   }
 
   private async fetchTraceContent(
     traceId: string,
     format: "full" | "tools-only" = "full",
+    client: LangfuseClient,
   ): Promise<string> {
-    const client = this.getClient();
     const trace = await client.api.trace.get(traceId);
 
     const content: string[] = [];

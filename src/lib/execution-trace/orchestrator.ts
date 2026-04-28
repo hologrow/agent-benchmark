@@ -52,7 +52,8 @@ async function findTraceByMagicAndTime(
   plugin: TraceExecutionPlugin,
   magicCode: string,
   fromTime: Date,
-  toTime: Date
+  toTime: Date,
+  agentId?: number,
 ): Promise<{ traceId: string; traceContent: string } | null> {
   try {
     console.log(
@@ -63,6 +64,7 @@ async function findTraceByMagicAndTime(
       magicCode,
       fromTime,
       toTime,
+      agentId,
     });
 
     if (traces.length > 0) {
@@ -110,7 +112,8 @@ async function persistTraceForResult(
     plugin,
     magicCode,
     fromTime,
-    toTime
+    toTime,
+    result.agent_id,
   );
 
   if (traceResult) {
@@ -204,6 +207,8 @@ export async function fetchTraceByMagicCode(params: {
   traceSpanStart?: Date;
   /** 与插件 {@link CapabilityInterfaces}[TRACE_EXECUTION].searchTraces 一致；模拟跑用 `tools-only` */
   traceContentFormat?: "full" | "tools-only";
+  /** 与集成里按 Agent 配置的 Langfuse 密钥对应 */
+  agentId?: number;
 }): Promise<{
   traceId: string;
   traceContent: string;
@@ -224,6 +229,7 @@ export async function fetchTraceByMagicCode(params: {
     fromTime,
     toTime,
     traceContentFormat: params.traceContentFormat,
+    agentId: params.agentId,
   });
 
   if (!traces.length) {
@@ -234,7 +240,7 @@ export async function fetchTraceByMagicCode(params: {
   }
 
   const first = traces[0];
-  const traceUrl = plugin.getTraceUrl(first.traceId);
+  const traceUrl = plugin.getTraceUrl(first.traceId, params.agentId);
   return {
     traceId: first.traceId,
     traceContent: first.traceContent,
@@ -253,6 +259,7 @@ export async function fetchTraceByMagicCodeWithBackoff(params: {
   maxRetries?: number;
   initialDelayMs?: number;
   traceContentFormat?: "full" | "tools-only";
+  agentId?: number;
 }): Promise<{
   traceId: string;
   traceContent: string;
@@ -271,6 +278,7 @@ export async function fetchTraceByMagicCodeWithBackoff(params: {
         completedAt: new Date(),
         traceSpanStart: params.traceSpanStart,
         traceContentFormat: params.traceContentFormat,
+        agentId: params.agentId,
       }),
       sleep(TRACE_SEARCH_ATTEMPT_TIMEOUT_MS).then(() => null),
     ]);

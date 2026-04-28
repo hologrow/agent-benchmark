@@ -185,6 +185,8 @@ export interface TestCase {
   forbidden_points: string;
   category: string;
   how: string;
+  /** 创建人（展示名）；历史数据可能为空字符串 */
+  created_by: string;
   created_at: string;
   updated_at: string;
 }
@@ -204,12 +206,14 @@ export function getTestCaseById(id: number): TestCase | undefined {
 }
 
 export function createTestCase(
-  testCase: Omit<TestCase, "id" | "created_at" | "updated_at">,
+  testCase: Omit<TestCase, "id" | "created_at" | "updated_at" | "created_by"> & {
+    created_by?: string;
+  },
 ): TestCase {
   const db = getDatabase();
   const result = db
     .prepare(
-      "INSERT INTO test_cases (test_id, name, description, input, expected_output, key_points, forbidden_points, category, how) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO test_cases (test_id, name, description, input, expected_output, key_points, forbidden_points, category, how, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .run(
       testCase.test_id,
@@ -221,6 +225,7 @@ export function createTestCase(
       testCase.forbidden_points,
       testCase.category,
       testCase.how,
+      testCase.created_by ?? "",
     );
 
   return getTestCaseById(result.lastInsertRowid as number)!;
@@ -269,6 +274,10 @@ export function updateTestCase(
   if (testCase.how !== undefined) {
     sets.push("how = ?");
     values.push(testCase.how);
+  }
+  if (testCase.created_by !== undefined) {
+    sets.push("created_by = ?");
+    values.push(testCase.created_by);
   }
   sets.push("updated_at = CURRENT_TIMESTAMP");
   values.push(id);
@@ -868,6 +877,7 @@ export function getExecutionDetails(executionId: number) {
       a.name as agent_name,
       tc.test_id,
       tc.name as test_case_name,
+      tc.created_by as test_case_created_by,
       tc.input as test_input,
       tc.expected_output,
       tc.key_points,

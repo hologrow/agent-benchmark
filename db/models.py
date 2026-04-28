@@ -58,6 +58,7 @@ class TestCase(Base):
     forbidden_points: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str | None] = mapped_column(Text, nullable=True)
     how: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("''"))
     created_at: Mapped[str] = mapped_column(Text, server_default=_ts)
     updated_at: Mapped[str] = mapped_column(Text, server_default=_ts)
 

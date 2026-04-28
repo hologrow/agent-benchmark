@@ -48,7 +48,8 @@ export async function PUT(
       key_points,
       forbidden_points,
       category,
-      how
+      how,
+      created_by,
     } = body;
 
     const testCase = getTestCaseById(parseInt(id));
@@ -73,6 +74,10 @@ export async function PUT(
     }
     if (category !== undefined) updateData.category = category;
     if (how !== undefined) updateData.how = how;
+    if (created_by !== undefined) {
+      updateData.created_by =
+        typeof created_by === 'string' ? created_by.trim() : '';
+    }
 
     const updatedTestCase = updateTestCase(parseInt(id), updateData);
     return NextResponse.json({ testCase: updatedTestCase });

@@ -34,6 +34,8 @@ export interface TestCase {
   forbidden_points: string;
   category: string;
   how: string;
+  /** 创建人；历史数据可能为空字符串 */
+  created_by: string;
   created_at: string;
 }
 
@@ -134,7 +136,13 @@ export type UpdateTestSetRequest = Partial<CreateTestSetRequest>;
 export type CreateTestCaseRequest = Partial<
   Pick<
     TestCase,
-    "test_id" | "name" | "description" | "expected_output" | "category" | "how"
+    | "test_id"
+    | "name"
+    | "description"
+    | "expected_output"
+    | "category"
+    | "how"
+    | "created_by"
   >
 > &
   Pick<TestCase, "input"> & {

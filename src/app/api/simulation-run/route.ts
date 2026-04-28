@@ -60,7 +60,7 @@ async function summarizeTraceZh(
         {
           role: "system",
           content:
-            "你是助手。用一到三句中文概括以下执行追踪中的关键工具调用与结论；只依据文本，不要编造。",
+            "你是助手。用一到三句中文概括以下执行追踪中的关键工具调用与结论；只依据文本，不要编造。; 输出使用非技术语言，只描述使用了哪些工具。",
         },
         {
           role: "user",
@@ -89,6 +89,7 @@ function parseOptionalIso(v: unknown): Date | undefined {
 }
 
 async function pullTraceAndSummary(
+  agentId: number,
   run: SimulationPayload,
   startedAt: Date,
 ): Promise<{
@@ -108,6 +109,7 @@ async function pullTraceAndSummary(
       startedAt,
       traceSpanStart,
       traceContentFormat: "tools-only",
+      agentId,
     });
   }
 
@@ -177,6 +179,7 @@ export async function POST(request: NextRequest) {
         try {
           const run = parseSimulationStdout(raw);
           const { trace, traceSummary } = await pullTraceAndSummary(
+            agentId,
             run,
             startedAt,
           );
@@ -202,7 +205,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { trace, traceSummary } = await pullTraceAndSummary(run, startedAt);
+    const { trace, traceSummary } = await pullTraceAndSummary(
+      agentId,
+      run,
+      startedAt,
+    );
     return NextResponse.json({ run, trace, traceSummary });
   } catch (error) {
     console.error("[simulation-run]", error);

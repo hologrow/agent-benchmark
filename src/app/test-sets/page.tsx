@@ -72,6 +72,7 @@ const testCaseFormSchema = z.object({
   forbidden_points: z.string().optional(),
   category: z.string().optional(),
   how: z.string().optional(),
+  created_by: z.string().optional(),
 });
 
 type TestSetFormData = z.infer<typeof testSetFormSchema>;
@@ -121,6 +122,7 @@ export default function TestSetsPage() {
       forbidden_points: "",
       category: "",
       how: "",
+      created_by: "",
     },
   });
 
@@ -271,17 +273,21 @@ export default function TestSetsPage() {
         ? JSON.stringify(values.forbidden_points.split("\n").filter(Boolean))
         : "[]";
 
+      const createdByTrim = (values.created_by ?? "").trim();
+
       if (editingCase) {
         await api.testCases.update(editingCase.id, {
           ...values,
           key_points: keyPoints,
           forbidden_points: forbiddenPoints,
+          created_by: createdByTrim,
         });
       } else {
         await api.testCases.create({
           ...values,
           key_points: keyPoints,
           forbidden_points: forbiddenPoints,
+          created_by: createdByTrim,
         });
       }
 
@@ -306,6 +312,7 @@ export default function TestSetsPage() {
       forbidden_points: parseJson(testCase.forbidden_points).join("\n"),
       category: testCase.category,
       how: testCase.how || "",
+      created_by: testCase.created_by ?? "",
     });
     setCaseDialogOpen(true);
   };
@@ -336,6 +343,7 @@ export default function TestSetsPage() {
       forbidden_points: "",
       category: "",
       how: "",
+      created_by: "",
     });
     setCaseDialogOpen(true);
   };
@@ -505,6 +513,7 @@ export default function TestSetsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Input Question</TableHead>
+                      <TableHead>创建人</TableHead>
                       <TableHead>Category</TableHead>
                       <TableHead>How To</TableHead>
                       <TableHead>Key Points</TableHead>
@@ -521,6 +530,11 @@ export default function TestSetsPage() {
                         >
                           {testCase.input.slice(0, 50)}
                           {testCase.input.length > 50 ? "..." : ""}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground max-w-[120px] truncate">
+                          {testCase.created_by?.trim()
+                            ? testCase.created_by
+                            : "—"}
                         </TableCell>
                         <TableCell>
                           {testCase.category ? (
@@ -647,6 +661,11 @@ export default function TestSetsPage() {
                           <div className="text-xs text-muted-foreground truncate max-w-[300px]">
                             {testCase.name}
                           </div>
+                          {testCase.created_by?.trim() ? (
+                            <div className="text-xs text-muted-foreground">
+                              创建人：{testCase.created_by}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                       <Button
@@ -754,6 +773,11 @@ export default function TestSetsPage() {
                           <div className="text-xs text-muted-foreground truncate max-w-[300px]">
                             {testCase.name}
                           </div>
+                          {testCase.created_by?.trim() ? (
+                            <div className="text-xs text-muted-foreground">
+                              创建人：{testCase.created_by}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                       <Button
@@ -834,6 +858,11 @@ export default function TestSetsPage() {
                       <div className="text-sm text-muted-foreground">
                         {testCase.name}
                       </div>
+                      {testCase.created_by?.trim() ? (
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          创建人：{testCase.created_by}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -915,6 +944,20 @@ export default function TestSetsPage() {
                     <FormLabel>Category</FormLabel>
                     <FormControl>
                       <Input placeholder="e.g.: Data Analysis" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={testCaseForm.control}
+                name="created_by"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>创建人</FormLabel>
+                    <FormControl>
+                      <Input placeholder="可选，便于区分用例来源" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

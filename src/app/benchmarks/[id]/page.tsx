@@ -83,6 +83,7 @@ interface BenchmarkResult {
   agent_name: string;
   test_id: string;
   test_case_name: string;
+  test_case_created_by: string | null;
   test_input: string;
   expected_output: string;
   key_points: string;
@@ -681,6 +682,11 @@ function ExecutionDetails({
                 <div className="text-xs text-muted-foreground truncate max-w-[200px]">
                   {result.test_case_name}
                 </div>
+                {result.test_case_created_by?.trim() ? (
+                  <div className="text-xs text-muted-foreground">
+                    创建人：{result.test_case_created_by}
+                  </div>
+                ) : null}
               </TableCell>
               <TableCell>{getStatusBadge(result.status)}</TableCell>
               <TableCell>{formatDuration(result.execution_time_ms)}</TableCell>
@@ -762,6 +768,12 @@ function ExecutionDetails({
             </DialogTitle>
             <DialogDescription>
               {selectedResult?.test_case_name}
+              {selectedResult?.test_case_created_by?.trim() ? (
+                <>
+                  {" "}
+                  · 创建人：{selectedResult.test_case_created_by}
+                </>
+              ) : null}
             </DialogDescription>
           </DialogHeader>
 
