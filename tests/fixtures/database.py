@@ -40,6 +40,7 @@ def create_test_db() -> sqlite3.Connection:
             forbidden_points TEXT DEFAULT '[]',
             how TEXT,
             created_by TEXT NOT NULL DEFAULT '',
+            images_json TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )

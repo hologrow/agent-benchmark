@@ -136,6 +136,8 @@ export interface LegacySyncParsedTestCasePayload {
   how: string;
   /** 外部同步可选；缺省存空字符串 */
   created_by?: string;
+  /** JSON 数组字符串，每项为图片 URL 或 data URL；可选 */
+  images_json?: string | null;
 }
 
 /** Bitable 拉取并解析后的结果（不落库）。 */

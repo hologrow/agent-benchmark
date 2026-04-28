@@ -187,6 +187,8 @@ export interface TestCase {
   how: string;
   /** 创建人（展示名）；历史数据可能为空字符串 */
   created_by: string;
+  /** JSON 数组字符串，每项为图片 data URL；无图为 null */
+  images_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -206,14 +208,22 @@ export function getTestCaseById(id: number): TestCase | undefined {
 }
 
 export function createTestCase(
-  testCase: Omit<TestCase, "id" | "created_at" | "updated_at" | "created_by"> & {
+  testCase: Omit<
+    TestCase,
+    "id" | "created_at" | "updated_at" | "created_by" | "images_json"
+  > & {
     created_by?: string;
+    images_json?: string | null;
   },
 ): TestCase {
   const db = getDatabase();
+  const imagesJson =
+    testCase.images_json === undefined || testCase.images_json === ""
+      ? null
+      : testCase.images_json;
   const result = db
     .prepare(
-      "INSERT INTO test_cases (test_id, name, description, input, expected_output, key_points, forbidden_points, category, how, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO test_cases (test_id, name, description, input, expected_output, key_points, forbidden_points, category, how, created_by, images_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .run(
       testCase.test_id,
@@ -226,6 +236,7 @@ export function createTestCase(
       testCase.category,
       testCase.how,
       testCase.created_by ?? "",
+      imagesJson,
     );
 
   return getTestCaseById(result.lastInsertRowid as number)!;
@@ -278,6 +289,12 @@ export function updateTestCase(
   if (testCase.created_by !== undefined) {
     sets.push("created_by = ?");
     values.push(testCase.created_by);
+  }
+  if (testCase.images_json !== undefined) {
+    sets.push("images_json = ?");
+    values.push(
+      testCase.images_json === "" ? null : testCase.images_json,
+    );
   }
   sets.push("updated_at = CURRENT_TIMESTAMP");
   values.push(id);

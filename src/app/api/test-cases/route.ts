@@ -33,7 +33,19 @@ export async function POST(request: NextRequest) {
       category,
       how,
       created_by,
+      images_json,
     } = body;
+
+    let imagesJsonOut: string | null = null;
+    if (images_json !== undefined && images_json !== null) {
+      if (typeof images_json === 'string') {
+        const t = images_json.trim();
+        imagesJsonOut = t === '' || t === '[]' ? null : t;
+      } else if (Array.isArray(images_json)) {
+        const arr = images_json.filter((x: unknown) => typeof x === 'string');
+        imagesJsonOut = arr.length === 0 ? null : JSON.stringify(arr);
+      }
+    }
 
     if (!input) {
       return NextResponse.json(
@@ -70,6 +82,7 @@ export async function POST(request: NextRequest) {
       category: categoryStr,
       how: how || '',
       created_by: createdByStr,
+      images_json: imagesJsonOut,
     });
 
     return NextResponse.json({ testCase }, { status: 201 });

@@ -36,7 +36,12 @@ export interface TestCase {
   how: string;
   /** 创建人；历史数据可能为空字符串 */
   created_by: string;
+  /**
+   * JSON 数组字符串，元素为图片 data URL（`data:image/...;base64,...`）；无图时为 null 或 `[]`
+   */
+  images_json: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface Benchmark {
@@ -143,6 +148,7 @@ export type CreateTestCaseRequest = Partial<
     | "category"
     | "how"
     | "created_by"
+    | "images_json"
   >
 > &
   Pick<TestCase, "input"> & {

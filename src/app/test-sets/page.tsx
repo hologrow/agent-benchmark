@@ -55,6 +55,11 @@ import { toast } from "sonner";
 import { formatDateLocal, formatDateTimeLocal } from "@/lib/format-datetime";
 import { api } from "@/lib/api";
 import type { TestSet, TestCase } from "@/types/api";
+import {
+  TestCaseImagesField,
+  TestCaseImagePreviews,
+} from "@/components/test-case-images-field";
+import { parseTestCaseImageUrls } from "@/lib/test-case-images";
 
 // ==================== Types ====================
 
@@ -102,6 +107,8 @@ export default function TestSetsPage() {
   const [editingCase, setEditingCase] = useState<TestCase | null>(null);
   const [deleteCaseDialogOpen, setDeleteCaseDialogOpen] = useState(false);
   const [deletingCase, setDeletingCase] = useState<TestCase | null>(null);
+  /** 创建/编辑弹窗中的附图 data URL 列表（非表单字段） */
+  const [caseImageUrls, setCaseImageUrls] = useState<string[]>([]);
 
   // Forms
   const testSetForm = useForm<TestSetFormData>({
@@ -275,12 +282,16 @@ export default function TestSetsPage() {
 
       const createdByTrim = (values.created_by ?? "").trim();
 
+      const imagesPayload =
+        caseImageUrls.length > 0 ? JSON.stringify(caseImageUrls) : null;
+
       if (editingCase) {
         await api.testCases.update(editingCase.id, {
           ...values,
           key_points: keyPoints,
           forbidden_points: forbiddenPoints,
           created_by: createdByTrim,
+          images_json: imagesPayload,
         });
       } else {
         await api.testCases.create({
@@ -288,6 +299,7 @@ export default function TestSetsPage() {
           key_points: keyPoints,
           forbidden_points: forbiddenPoints,
           created_by: createdByTrim,
+          images_json: imagesPayload,
         });
       }
 
@@ -295,6 +307,7 @@ export default function TestSetsPage() {
       setCaseDialogOpen(false);
       testCaseForm.reset();
       setEditingCase(null);
+      setCaseImageUrls([]);
       fetchData();
     } catch (error) {
       console.error("Error saving test case:", error);
@@ -305,6 +318,7 @@ export default function TestSetsPage() {
 
   const handleEditCase = (testCase: TestCase) => {
     setEditingCase(testCase);
+    setCaseImageUrls(parseTestCaseImageUrls(testCase.images_json));
     testCaseForm.reset({
       input: testCase.input,
       expected_output: testCase.expected_output,
@@ -336,6 +350,7 @@ export default function TestSetsPage() {
 
   const openCreateCaseDialog = () => {
     setEditingCase(null);
+    setCaseImageUrls([]);
     testCaseForm.reset({
       input: "",
       expected_output: "",
@@ -514,6 +529,7 @@ export default function TestSetsPage() {
                     <TableRow>
                       <TableHead>Input Question</TableHead>
                       <TableHead>创建人</TableHead>
+                      <TableHead>附图</TableHead>
                       <TableHead>Category</TableHead>
                       <TableHead>How To</TableHead>
                       <TableHead>Key Points</TableHead>
@@ -535,6 +551,11 @@ export default function TestSetsPage() {
                           {testCase.created_by?.trim()
                             ? testCase.created_by
                             : "—"}
+                        </TableCell>
+                        <TableCell className="max-w-[120px]">
+                          <TestCaseImagePreviews
+                            imagesJson={testCase.images_json}
+                          />
                         </TableCell>
                         <TableCell>
                           {testCase.category ? (
@@ -863,6 +884,16 @@ export default function TestSetsPage() {
                           创建人：{testCase.created_by}
                         </div>
                       ) : null}
+                      {parseTestCaseImageUrls(testCase.images_json).length >
+                      0 ? (
+                        <div className="mt-2">
+                          <TestCaseImagePreviews
+                            imagesJson={testCase.images_json}
+                            maxThumbs={8}
+                            className="gap-2"
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -920,7 +951,13 @@ export default function TestSetsPage() {
       </Dialog>
 
       {/* Create/Edit Test Case Dialog */}
-      <Dialog open={caseDialogOpen} onOpenChange={setCaseDialogOpen}>
+      <Dialog
+        open={caseDialogOpen}
+        onOpenChange={(open) => {
+          setCaseDialogOpen(open);
+          if (!open) setCaseImageUrls([]);
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
@@ -1021,6 +1058,11 @@ export default function TestSetsPage() {
                     <FormMessage />
                   </FormItem>
                 )}
+              />
+
+              <TestCaseImagesField
+                value={caseImageUrls}
+                onChange={setCaseImageUrls}
               />
 
               <div className="grid grid-cols-2 gap-4">

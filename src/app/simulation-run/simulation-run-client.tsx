@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import type { Agent as ApiAgent } from "@/types/api";
 import { Markdown } from "@/components/ui/markdown";
 import { cn } from "@/lib/utils";
+import { TestCaseImagesField } from "@/components/test-case-images-field";
 
 const SIMULATION_TEST_CASE_CREATOR_STORAGE_KEY =
   "benchmark-runner:simulation-test-case-creator";
@@ -180,6 +181,7 @@ export default function SimulationRunPageClient() {
   const [draftKeyPoints, setDraftKeyPoints] = useState("");
   const [draftForbiddenPoints, setDraftForbiddenPoints] = useState("");
   const [draftCreatedBy, setDraftCreatedBy] = useState("");
+  const [draftImageUrls, setDraftImageUrls] = useState<string[]>([]);
   const [savingCase, setSavingCase] = useState(false);
 
   /** 从 sessionStorage 恢复整页状态（优先 URL 上的 agentId） */
@@ -527,6 +529,7 @@ export default function SimulationRunPageClient() {
     setDraftTraceSummary(result.traceSummary ?? "");
     setDraftKeyPoints("");
     setDraftForbiddenPoints("");
+    setDraftImageUrls([]);
     try {
       const saved = window.localStorage.getItem(
         SIMULATION_TEST_CASE_CREATOR_STORAGE_KEY,
@@ -540,6 +543,7 @@ export default function SimulationRunPageClient() {
 
   function cancelCaseImport() {
     setCaseImportMode(false);
+    setDraftImageUrls([]);
   }
 
   async function saveTestCaseFromSimulation() {
@@ -593,6 +597,10 @@ export default function SimulationRunPageClient() {
           category: "simulation-run",
           how: draftTraceSummary.trim(),
           created_by: creator,
+          images_json:
+            draftImageUrls.length > 0
+              ? JSON.stringify(draftImageUrls)
+              : null,
         }),
       });
       const data = await res.json();
@@ -604,6 +612,7 @@ export default function SimulationRunPageClient() {
       }
       toast.success("已保存到测试用例");
       setCaseImportMode(false);
+      setDraftImageUrls([]);
     } catch {
       toast.error("保存失败");
     } finally {
@@ -651,10 +660,6 @@ export default function SimulationRunPageClient() {
       <Card>
         <CardHeader>
           <CardTitle>运行配置</CardTitle>
-          <CardDescription>
-            命令行 Agent 会使用配置中的 {"{{prompt}}"} 与 {"{{execution_id}}"}
-            （模拟跑固定为 simulation）。
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -913,6 +918,12 @@ export default function SimulationRunPageClient() {
                   placeholder="每行一条"
                 />
               </div>
+              <TestCaseImagesField
+                label="附图（可选）"
+                value={draftImageUrls}
+                onChange={setDraftImageUrls}
+                disabled={savingCase}
+              />
               <div className="flex flex-wrap gap-2 pt-2">
                 <Button
                   type="button"

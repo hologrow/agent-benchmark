@@ -50,6 +50,7 @@ export async function PUT(
       category,
       how,
       created_by,
+      images_json,
     } = body;
 
     const testCase = getTestCaseById(parseInt(id));
@@ -77,6 +78,17 @@ export async function PUT(
     if (created_by !== undefined) {
       updateData.created_by =
         typeof created_by === 'string' ? created_by.trim() : '';
+    }
+    if (images_json !== undefined) {
+      if (images_json === null) {
+        updateData.images_json = null;
+      } else if (typeof images_json === 'string') {
+        const t = images_json.trim();
+        updateData.images_json = t === '' || t === '[]' ? null : t;
+      } else if (Array.isArray(images_json)) {
+        const arr = images_json.filter((x: unknown) => typeof x === 'string');
+        updateData.images_json = arr.length === 0 ? null : JSON.stringify(arr);
+      }
     }
 
     const updatedTestCase = updateTestCase(parseInt(id), updateData);
