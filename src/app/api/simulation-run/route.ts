@@ -107,6 +107,7 @@ async function pullTraceAndSummary(
       magicCode,
       startedAt,
       traceSpanStart,
+      traceContentFormat: "tools-only",
     });
   }
 

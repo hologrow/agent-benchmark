@@ -92,6 +92,7 @@ export class LangfusePlugin extends BasePlugin {
     executionId?: number;
     fromTime?: Date;
     toTime?: Date;
+    traceContentFormat?: "full" | "tools-only";
   }): Promise<
     Array<{
       traceId: string;
@@ -102,6 +103,7 @@ export class LangfusePlugin extends BasePlugin {
     console.log("search trace by magic code");
     const client = this.getClient();
     const { magicCode, fromTime, toTime } = query;
+    const traceContentFormat = query.traceContentFormat ?? "full";
 
     if (!magicCode) {
       return [];
@@ -137,7 +139,10 @@ export class LangfusePlugin extends BasePlugin {
         const outputStr = JSON.stringify(trace.output || "");
 
         if (inputStr.includes(magicCode) || outputStr.includes(magicCode)) {
-          const traceContent = await this.fetchTraceContent(trace.id);
+          const traceContent = await this.fetchTraceContent(
+            trace.id,
+            traceContentFormat,
+          );
           results.push({
             traceId: trace.id,
             traceContent,
@@ -158,7 +163,7 @@ export class LangfusePlugin extends BasePlugin {
     traceId: string,
   ): Promise<{ traceId: string; traceContent: string; url?: string } | null> {
     try {
-      const traceContent = await this.fetchTraceContent(traceId);
+      const traceContent = await this.fetchTraceContent(traceId, "full");
       return {
         traceId,
         traceContent,
@@ -175,13 +180,16 @@ export class LangfusePlugin extends BasePlugin {
     return `${config.baseUrl}/trace/${traceId}`;
   }
 
-  private async fetchTraceContent(traceId: string): Promise<string> {
+  private async fetchTraceContent(
+    traceId: string,
+    format: "full" | "tools-only" = "full",
+  ): Promise<string> {
     const client = this.getClient();
     const trace = await client.api.trace.get(traceId);
 
     const content: string[] = [];
 
-    if (trace.output) {
+    if (format === "full" && trace.output) {
       content.push("--- Real Output ---");
       content.push(
         typeof trace.output === "object"

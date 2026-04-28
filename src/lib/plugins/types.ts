@@ -229,6 +229,11 @@ export interface CapabilityInterfaces {
       executionId?: number;
       fromTime?: Date;
       toTime?: Date;
+      /**
+       * `full`（默认）：根 trace 的 output + TOOL 类 observations，与 benchmark 落库一致。
+       * `tools-only`：仅序列化 TOOL observations（模拟跑等场景）。
+       */
+      traceContentFormat?: "full" | "tools-only";
     }): Promise<
       Array<{
         traceId: string;

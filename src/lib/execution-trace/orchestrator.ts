@@ -202,6 +202,8 @@ export async function fetchTraceByMagicCode(params: {
   completedAt: Date;
   /** 子进程真实开始时间（如模拟跑 JSON 的 run_started_at），用于收紧 from 边界 */
   traceSpanStart?: Date;
+  /** 与插件 {@link CapabilityInterfaces}[TRACE_EXECUTION].searchTraces 一致；模拟跑用 `tools-only` */
+  traceContentFormat?: "full" | "tools-only";
 }): Promise<{
   traceId: string;
   traceContent: string;
@@ -221,6 +223,7 @@ export async function fetchTraceByMagicCode(params: {
     magicCode: params.magicCode,
     fromTime,
     toTime,
+    traceContentFormat: params.traceContentFormat,
   });
 
   if (!traces.length) {
@@ -249,6 +252,7 @@ export async function fetchTraceByMagicCodeWithBackoff(params: {
   traceSpanStart?: Date;
   maxRetries?: number;
   initialDelayMs?: number;
+  traceContentFormat?: "full" | "tools-only";
 }): Promise<{
   traceId: string;
   traceContent: string;
@@ -266,6 +270,7 @@ export async function fetchTraceByMagicCodeWithBackoff(params: {
         startedAt: params.startedAt,
         completedAt: new Date(),
         traceSpanStart: params.traceSpanStart,
+        traceContentFormat: params.traceContentFormat,
       }),
       sleep(TRACE_SEARCH_ATTEMPT_TIMEOUT_MS).then(() => null),
     ]);
